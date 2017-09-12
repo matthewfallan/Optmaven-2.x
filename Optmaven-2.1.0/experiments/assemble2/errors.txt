@@ -1,0 +1,4 @@
+Traceback (most recent call last):
+  File "/gpfs/work/m/mfa5147/OptMAVEn_Zika/Optmaven-2.1.0/src/experiment.py", line 127, in run
+    raise ValueError("Bad Experiment status: {}".format(self.status))
+ValueError: Bad Experiment status: 2

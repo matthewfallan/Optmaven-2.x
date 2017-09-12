@@ -1,0 +1,1067 @@
+ccopy_reg
+_reconstructor
+p1
+(cexperiment
+OptmavenExperiment
+p2
+c__builtin__
+object
+p3
+NtRp4
+(dp5
+S'status'
+p6
+I1
+sS'antigen_input_file'
+p7
+S'/gpfs/work/m/mfa5147/OptMAVEn_Zika/Optmaven-2.1.0/experiments/sub1/structures/antigen_input.pdb'
+p8
+sS'grid_zAngle'
+p9
+cnumpy.core.multiarray
+_reconstruct
+p10
+(cnumpy
+ndarray
+p11
+(I0
+tS'b'
+tRp12
+(I1
+(I6
+tcnumpy
+dtype
+p13
+(S'f8'
+I0
+I1
+tRp14
+(I3
+S'<'
+NNNI-1
+I-1
+I0
+tbI00
+S'\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00N@\x00\x00\x00\x00\x00\x00^@\x00\x00\x00\x00\x00\x80f@\x00\x00\x00\x00\x00\x00n@\x00\x00\x00\x00\x00\xc0r@'
+tbsS'charmm_energy_terms'
+p15
+(lp16
+S'angl'
+p17
+aS'bond'
+p18
+aS'dihe'
+p19
+aS'elec'
+p20
+aS'impr'
+p21
+aS'urey'
+p22
+aS'vdw'
+p23
+asS'topology_files'
+p24
+(lp25
+S'/gpfs/work/m/mfa5147/OptMAVEn_Zika/Optmaven-2.1.0/data/input_files/top_all27_prot_na.rtf'
+p26
+asS'file'
+p27
+S'/gpfs/work/m/mfa5147/OptMAVEn_Zika/Optmaven-2.1.0/experiments/sub1/.temp/sub1.pickle'
+p28
+sS'antigen_chain_ids'
+p29
+(lp30
+S'L'
+aS'P'
+asS'errors'
+p31
+S'/gpfs/work/m/mfa5147/OptMAVEn_Zika/Optmaven-2.1.0/experiments/sub1/errors.txt'
+p32
+sS'antigen_input_molecule'
+p33
+g1
+(cmolecules
+Molecule
+p34
+g3
+NtRp35
+(dp36
+S'exclude_hetero_ask'
+p37
+I01
+sS'experiment'
+p38
+g4
+sS'name'
+p39
+g7
+sg27
+g8
+sS'excluded_residue_ids'
+p40
+NsbsS'epitope_residue_ids'
+p41
+(dp42
+S'P'
+(lp43
+(S' '
+I0
+S' '
+tp44
+a(S' '
+I1
+S' '
+tp45
+a(S' '
+I2
+S' '
+tp46
+a(S' '
+I3
+S' '
+tp47
+a(S' '
+I4
+S' '
+tp48
+a(S' '
+I5
+S' '
+tp49
+a(S' '
+I6
+S' '
+tp50
+a(S' '
+I7
+S' '
+tp51
+asS'L'
+(lp52
+(S' '
+I1
+S' '
+tp53
+a(S' '
+I2
+S' '
+tp54
+a(S' '
+I3
+S' '
+tp55
+a(S' '
+I4
+S' '
+tp56
+a(S' '
+I5
+S' '
+tp57
+a(S' '
+I6
+S' '
+tp58
+a(S' '
+I7
+S' '
+tp59
+a(S' '
+I8
+S' '
+tp60
+a(S' '
+I9
+S' '
+tp61
+a(S' '
+I10
+S' '
+tp62
+a(S' '
+I11
+S' '
+tp63
+a(S' '
+I12
+S' '
+tp64
+a(S' '
+I13
+S' '
+tp65
+a(S' '
+I14
+S' '
+tp66
+a(S' '
+I15
+S' '
+tp67
+a(S' '
+I16
+S' '
+tp68
+a(S' '
+I17
+S' '
+tp69
+a(S' '
+I18
+S' '
+tp70
+a(S' '
+I19
+S' '
+tp71
+a(S' '
+I20
+S' '
+tp72
+a(S' '
+I21
+S' '
+tp73
+a(S' '
+I22
+S' '
+tp74
+a(S' '
+I23
+S' '
+tp75
+a(S' '
+I24
+S' '
+tp76
+a(S' '
+I25
+S' '
+tp77
+a(S' '
+I26
+S' '
+tp78
+a(S' '
+I27
+S' '
+tp79
+a(S' '
+I28
+S' '
+tp80
+a(S' '
+I29
+S' '
+tp81
+a(S' '
+I30
+S' '
+tp82
+a(S' '
+I31
+S' '
+tp83
+a(S' '
+I32
+S' '
+tp84
+a(S' '
+I33
+S' '
+tp85
+a(S' '
+I34
+S' '
+tp86
+a(S' '
+I35
+S' '
+tp87
+a(S' '
+I36
+S' '
+tp88
+a(S' '
+I37
+S' '
+tp89
+a(S' '
+I38
+S' '
+tp90
+a(S' '
+I39
+S' '
+tp91
+a(S' '
+I40
+S' '
+tp92
+a(S' '
+I41
+S' '
+tp93
+a(S' '
+I42
+S' '
+tp94
+a(S' '
+I43
+S' '
+tp95
+a(S' '
+I44
+S' '
+tp96
+a(S' '
+I45
+S' '
+tp97
+a(S' '
+I46
+S' '
+tp98
+a(S' '
+I47
+S' '
+tp99
+a(S' '
+I48
+S' '
+tp100
+a(S' '
+I49
+S' '
+tp101
+a(S' '
+I50
+S' '
+tp102
+a(S' '
+I51
+S' '
+tp103
+a(S' '
+I52
+S' '
+tp104
+a(S' '
+I53
+S' '
+tp105
+a(S' '
+I54
+S' '
+tp106
+a(S' '
+I55
+S' '
+tp107
+a(S' '
+I56
+S' '
+tp108
+a(S' '
+I57
+S' '
+tp109
+a(S' '
+I58
+S' '
+tp110
+a(S' '
+I59
+S' '
+tp111
+a(S' '
+I60
+S' '
+tp112
+a(S' '
+I61
+S' '
+tp113
+a(S' '
+I62
+S' '
+tp114
+a(S' '
+I63
+S' '
+tp115
+a(S' '
+I64
+S' '
+tp116
+a(S' '
+I65
+S' '
+tp117
+a(S' '
+I66
+S' '
+tp118
+a(S' '
+I67
+S' '
+tp119
+a(S' '
+I68
+S' '
+tp120
+a(S' '
+I69
+S' '
+tp121
+a(S' '
+I70
+S' '
+tp122
+a(S' '
+I71
+S' '
+tp123
+a(S' '
+I72
+S' '
+tp124
+a(S' '
+I73
+S' '
+tp125
+a(S' '
+I74
+S' '
+tp126
+a(S' '
+I75
+S' '
+tp127
+a(S' '
+I76
+S' '
+tp128
+a(S' '
+I77
+S' '
+tp129
+a(S' '
+I78
+S' '
+tp130
+a(S' '
+I79
+S' '
+tp131
+a(S' '
+I80
+S' '
+tp132
+a(S' '
+I81
+S' '
+tp133
+a(S' '
+I82
+S' '
+tp134
+a(S' '
+I83
+S' '
+tp135
+a(S' '
+I84
+S' '
+tp136
+a(S' '
+I85
+S' '
+tp137
+a(S' '
+I86
+S' '
+tp138
+a(S' '
+I87
+S' '
+tp139
+a(S' '
+I88
+S' '
+tp140
+a(S' '
+I89
+S' '
+tp141
+a(S' '
+I90
+S' '
+tp142
+a(S' '
+I91
+S' '
+tp143
+a(S' '
+I92
+S' '
+tp144
+a(S' '
+I93
+S' '
+tp145
+a(S' '
+I94
+S' '
+tp146
+a(S' '
+I95
+S' '
+tp147
+a(S' '
+I96
+S' '
+tp148
+a(S' '
+I97
+S' '
+tp149
+a(S' '
+I98
+S' '
+tp150
+a(S' '
+I99
+S' '
+tp151
+a(S' '
+I100
+S' '
+tp152
+a(S' '
+I101
+S' '
+tp153
+a(S' '
+I102
+S' '
+tp154
+a(S' '
+I103
+S' '
+tp155
+a(S' '
+I104
+S' '
+tp156
+a(S' '
+I105
+S' '
+tp157
+a(S' '
+I106
+S' '
+tp158
+a(S' '
+I107
+S' '
+tp159
+a(S' '
+I108
+S' '
+tp160
+a(S' '
+I109
+S' '
+tp161
+a(S' '
+I110
+S' '
+tp162
+a(S' '
+I111
+S' '
+tp163
+a(S' '
+I112
+S' '
+tp164
+a(S' '
+I113
+S' '
+tp165
+a(S' '
+I114
+S' '
+tp166
+a(S' '
+I115
+S' '
+tp167
+a(S' '
+I116
+S' '
+tp168
+a(S' '
+I117
+S' '
+tp169
+a(S' '
+I118
+S' '
+tp170
+a(S' '
+I119
+S' '
+tp171
+a(S' '
+I120
+S' '
+tp172
+a(S' '
+I121
+S' '
+tp173
+a(S' '
+I122
+S' '
+tp174
+a(S' '
+I123
+S' '
+tp175
+a(S' '
+I124
+S' '
+tp176
+a(S' '
+I125
+S' '
+tp177
+a(S' '
+I126
+S' '
+tp178
+a(S' '
+I127
+S' '
+tp179
+a(S' '
+I128
+S' '
+tp180
+a(S' '
+I129
+S' '
+tp181
+a(S' '
+I130
+S' '
+tp182
+a(S' '
+I131
+S' '
+tp183
+a(S' '
+I132
+S' '
+tp184
+a(S' '
+I133
+S' '
+tp185
+a(S' '
+I134
+S' '
+tp186
+a(S' '
+I135
+S' '
+tp187
+a(S' '
+I136
+S' '
+tp188
+a(S' '
+I137
+S' '
+tp189
+a(S' '
+I138
+S' '
+tp190
+a(S' '
+I139
+S' '
+tp191
+a(S' '
+I140
+S' '
+tp192
+a(S' '
+I141
+S' '
+tp193
+a(S' '
+I142
+S' '
+tp194
+a(S' '
+I143
+S' '
+tp195
+a(S' '
+I144
+S' '
+tp196
+a(S' '
+I145
+S' '
+tp197
+a(S' '
+I146
+S' '
+tp198
+a(S' '
+I147
+S' '
+tp199
+a(S' '
+I148
+S' '
+tp200
+a(S' '
+I149
+S' '
+tp201
+a(S' '
+I150
+S' '
+tp202
+a(S' '
+I151
+S' '
+tp203
+a(S' '
+I152
+S' '
+tp204
+a(S' '
+I153
+S' '
+tp205
+a(S' '
+I154
+S' '
+tp206
+a(S' '
+I155
+S' '
+tp207
+a(S' '
+I156
+S' '
+tp208
+a(S' '
+I157
+S' '
+tp209
+a(S' '
+I158
+S' '
+tp210
+a(S' '
+I159
+S' '
+tp211
+a(S' '
+I160
+S' '
+tp212
+a(S' '
+I161
+S' '
+tp213
+a(S' '
+I162
+S' '
+tp214
+a(S' '
+I163
+S' '
+tp215
+a(S' '
+I164
+S' '
+tp216
+a(S' '
+I165
+S' '
+tp217
+a(S' '
+I166
+S' '
+tp218
+a(S' '
+I167
+S' '
+tp219
+a(S' '
+I168
+S' '
+tp220
+a(S' '
+I169
+S' '
+tp221
+a(S' '
+I170
+S' '
+tp222
+a(S' '
+I171
+S' '
+tp223
+a(S' '
+I172
+S' '
+tp224
+a(S' '
+I173
+S' '
+tp225
+a(S' '
+I174
+S' '
+tp226
+a(S' '
+I175
+S' '
+tp227
+a(S' '
+I176
+S' '
+tp228
+a(S' '
+I177
+S' '
+tp229
+a(S' '
+I178
+S' '
+tp230
+a(S' '
+I179
+S' '
+tp231
+a(S' '
+I180
+S' '
+tp232
+a(S' '
+I181
+S' '
+tp233
+a(S' '
+I182
+S' '
+tp234
+a(S' '
+I183
+S' '
+tp235
+a(S' '
+I184
+S' '
+tp236
+a(S' '
+I185
+S' '
+tp237
+a(S' '
+I186
+S' '
+tp238
+a(S' '
+I187
+S' '
+tp239
+a(S' '
+I188
+S' '
+tp240
+a(S' '
+I189
+S' '
+tp241
+a(S' '
+I190
+S' '
+tp242
+a(S' '
+I191
+S' '
+tp243
+a(S' '
+I192
+S' '
+tp244
+a(S' '
+I193
+S' '
+tp245
+a(S' '
+I194
+S' '
+tp246
+a(S' '
+I195
+S' '
+tp247
+a(S' '
+I196
+S' '
+tp248
+a(S' '
+I197
+S' '
+tp249
+a(S' '
+I198
+S' '
+tp250
+a(S' '
+I199
+S' '
+tp251
+a(S' '
+I200
+S' '
+tp252
+a(S' '
+I201
+S' '
+tp253
+a(S' '
+I202
+S' '
+tp254
+a(S' '
+I203
+S' '
+tp255
+a(S' '
+I204
+S' '
+tp256
+a(S' '
+I205
+S' '
+tp257
+a(S' '
+I206
+S' '
+tp258
+a(S' '
+I207
+S' '
+tp259
+a(S' '
+I208
+S' '
+tp260
+a(S' '
+I209
+S' '
+tp261
+a(S' '
+I210
+S' '
+tp262
+a(S' '
+I211
+S' '
+tp263
+assS'grid_z'
+p264
+g10
+(g11
+(I0
+tS'b'
+tRp265
+(I1
+(I11
+tg14
+I00
+S'\x00\x00\x00\x00\x00\x00\x0e@\x00\x00\x00\x00\x00\x00\x14@\x00\x00\x00\x00\x00\x00\x19@\x00\x00\x00\x00\x00\x00\x1e@\x00\x00\x00\x00\x00\x80!@\x00\x00\x00\x00\x00\x00$@\x00\x00\x00\x00\x00\x80&@\x00\x00\x00\x00\x00\x00)@\x00\x00\x00\x00\x00\x80+@\x00\x00\x00\x00\x00\x00.@\x00\x00\x00\x00\x00@0@'
+tbsS'grid_y'
+p266
+g10
+(g11
+(I0
+tS'b'
+tRp267
+(I1
+(I7
+tg14
+I00
+S'\x00\x00\x00\x00\x00\x00$\xc0\x00\x00\x00\x00\x00\x00\x1e\xc0\x00\x00\x00\x00\x00\x00\x14\xc0\x00\x00\x00\x00\x00\x00\x04\xc0\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x04@\x00\x00\x00\x00\x00\x00\x14@'
+tbsS'grid_x'
+p268
+g10
+(g11
+(I0
+tS'b'
+tRp269
+(I1
+(I7
+tg14
+I00
+S'\x00\x00\x00\x00\x00\x00\x14\xc0\x00\x00\x00\x00\x00\x00\x04\xc0\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x04@\x00\x00\x00\x00\x00\x00\x14@\x00\x00\x00\x00\x00\x00\x1e@\x00\x00\x00\x00\x00\x00$@'
+tbsS'antigen_input_name'
+p270
+g7
+sS'charmm_iterations'
+p271
+I5000
+sS'solvation_files'
+p272
+(lp273
+S'/gpfs/work/m/mfa5147/OptMAVEn_Zika/Optmaven-2.1.0/data/input_files/solvation.dat'
+p274
+asS'name_contig'
+p275
+S'sub1'
+p276
+sS'warnings'
+p277
+S'/gpfs/work/m/mfa5147/OptMAVEn_Zika/Optmaven-2.1.0/experiments/sub1/warnings.txt'
+p278
+sS'parameter_files'
+p279
+(lp280
+S'/gpfs/work/m/mfa5147/OptMAVEn_Zika/Optmaven-2.1.0/data/input_files/par_all27_prot_na.prm'
+p281
+asS'walltime'
+p282
+F86399
+sS'structure_directory'
+p283
+S'/gpfs/work/m/mfa5147/OptMAVEn_Zika/Optmaven-2.1.0/experiments/sub1/structures'
+p284
+sg39
+g276
+sS'temp'
+p285
+S'/gpfs/work/m/mfa5147/OptMAVEn_Zika/Optmaven-2.1.0/experiments/sub1/.temp'
+p286
+sS'directory'
+p287
+S'/gpfs/work/m/mfa5147/OptMAVEn_Zika/Optmaven-2.1.0/experiments/sub1'
+p288
+sS'entire_input_name'
+p289
+S'entire_input_file'
+p290
+sb.

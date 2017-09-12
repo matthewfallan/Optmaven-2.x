@@ -1,0 +1,10 @@
+assemble
+86399
+no
+1ce1.pdb
+all
+all
+all
+P
+5-7
+

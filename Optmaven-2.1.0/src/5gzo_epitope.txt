@@ -1,0 +1,5 @@
+PDB	5GZO
+Antigen	A
+Antibody	H, L
+Cutoff	4.0
+A	64, 65, 66, 67, 68, 69, 84, 87, 89, 90, 118, 119, 120, 233, 252

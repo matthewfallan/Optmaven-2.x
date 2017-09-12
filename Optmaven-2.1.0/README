@@ -1,0 +1,8 @@
+Optmaven-2.1.0
+09 September 2017
+Written by Matthew Allan of the Costas Maranas Lab, Department of Chemical Engineering, The Pennsylvania State University, University Park PA 16802.
+
+Dependencies:
+Python 2.7
+Numpy
+Biopython 1.71 or later

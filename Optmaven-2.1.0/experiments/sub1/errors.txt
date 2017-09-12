@@ -1,0 +1,14 @@
+Traceback (most recent call last):
+  File "/gpfs/work/m/mfa5147/OptMAVEn_Zika/Optmaven-2.1.0/src/experiment.py", line 128, in run
+    task()
+  File "/gpfs/work/m/mfa5147/OptMAVEn_Zika/Optmaven-2.1.0/src/experiment.py", line 140, in relax_antigen
+    antigen_molecule.relax(self.antigen_relaxed_file)
+  File "/gpfs/work/m/mfa5147/OptMAVEn_Zika/Optmaven-2.1.0/src/molecules.py", line 87, in relax
+    self.relax_CHARMM(relaxed_file)
+  File "/gpfs/work/m/mfa5147/OptMAVEn_Zika/Optmaven-2.1.0/src/molecules.py", line 93, in relax_CHARMM
+    pass
+  File "/gpfs/work/m/mfa5147/OptMAVEn_Zika/Optmaven-2.1.0/src/charmm.py", line 147, in __exit__
+    output_molecule = molecules.merge(output_molecules, True, merged_name, self.relaxed_file, write_pdb=True)
+  File "/gpfs/work/m/mfa5147/OptMAVEn_Zika/Optmaven-2.1.0/src/molecules.py", line 262, in merge
+    raise ValueError("Attempted to merge two Molecules that each have a chain {}.".format(chain_id))
+ValueError: Attempted to merge two Molecules that each have a chain  .
