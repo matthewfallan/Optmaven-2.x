@@ -1,5 +1,4 @@
 assemble
-86399
 no
 1ce1.pdb
 all

@@ -25,8 +25,9 @@ vmd_command = standards.VmdCommand
 
 class VmdProc(object):
     """ This class is the base class for managing all VMD procedures. """
-    def __init__(self, experiment):
+    def __init__(self, experiment, directory=None):
         self.experiment = experiment
+        self.directory = directory
         self.has_run = False
         self.garbage = list()
 
@@ -63,7 +64,10 @@ class VmdProc(object):
             pass
 
     def __enter__(self):
-        self.directory = tempfile.mkdtemp(prefix="vmd_", dir=self.experiment.get_temp())
+        if self.directory is None:
+            self.directory = tempfile.mkdtemp(prefix="vmd_", dir=self.experiment.temp)
+        else:
+            os.mkdir(self.directory)
         self.previous_directory = os.getcwd()
         os.chdir(standards.SourceDirectory)
 

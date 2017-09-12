@@ -15,7 +15,7 @@ PDBDirectory = os.path.join(DataDirectory, "pdbs")
 InputsDirectory = os.path.join(DataDirectory, "input_files")
 AntibodiesDirectory = os.path.join(DataDirectory, "antibodies")
 ScaffoldsDirectory = os.path.join(AntibodiesDirectory, "scaffolds")
-MAPsDirectory = os.path.join(AntibodiesDirectory, "maps")
+MapsDirectory = os.path.join(AntibodiesDirectory, "maps")
 
 # Check to make sure all of the directories and files are present. If not, the installation is malformed.
 if os.path.basename(OptmavenDirectory) != OptmavenName:
@@ -40,6 +40,11 @@ MaxListDisplay = 20
 SelectAll = "all"
 SelectNone = "none"
 EscapeCharacter = "\\"
+
+# Default PBS settings.
+DefaultWalltime = 86399  # 23 hours, 59 minutes, 59 seconds
+DefaultBatchSize = 10
+PythonModule = "python/2.7.5.ucs4"
 
 # Optmaven grid settings.
 DefaultOptmavenGrid_x = np.linspace(-5, 10, 7)
@@ -72,6 +77,10 @@ ScaffoldAntibodies = {chain: os.path.join(ScaffoldsDirectory, "Molecule{}.pdb".f
 
 # Antigen positioning parameters.
 DefaultClashCutoff = 1.25  # Angstroms
+
+# MAPs database standards.
+MapsChains = ["H", "K", "L"]
+MapsCdrs = ["V", "CDR3", "J"]
 
 # Rotation matrix routines.
 def rotate_vi_to_vf(vi, vf):

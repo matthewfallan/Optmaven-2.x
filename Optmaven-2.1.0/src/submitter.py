@@ -1,5 +1,6 @@
-
 import subprocess
+
+import standards
 
 def submit(file_name, command, walltime):
     secs = int(walltime % 60)
@@ -11,7 +12,8 @@ def submit(file_name, command, walltime):
     script = """#!/bin/sh
 #PBS -q lionxf
 #PBS -l walltime={t}
-{c}""".format(t=walltime_text, c=command)
+#module load {p}
+{c}""".format(t=walltime_text, p=standards.PythonModule, c=command)
     with open(file_name, "w") as f:
         f.write(script)
     subprocess.call(["chmod", "u+x", file_name])

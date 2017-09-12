@@ -12,6 +12,7 @@ import numpy as np
 
 from console import disp
 import klaus
+import maps
 import molecules
 import standards
 import submitter
@@ -38,7 +39,7 @@ class Experiment(object):
         self.file = os.path.join(self.temp, "{}.pickle".format(self.name_contig))
         self.warnings = os.path.join(self.directory, "warnings.txt")
         self.errors = os.path.join(self.directory, "errors.txt")
-        self.walltime = self.ask("walltime (seconds)", number=True)
+        #self.walltime = self.ask("walltime (seconds)", number=True)
         self.structure_directory = os.path.join(self.directory, "structures")
         os.mkdir(self.structure_directory)
 
@@ -46,10 +47,13 @@ class Experiment(object):
         with open(self.file, "w") as f:
             pkl.dump(self, f)
 
-    def submit(self):
+    def submit(self, args=None):
         handle, file_name = tempfile.mkstemp(prefix="{}_".format(self.name_contig), suffix=".sh", dir=self.temp)
         os.close(handle)
-        command = """python {} {}""".format(os.path.realpath(__file__), self.file)
+        if args is None:
+            args = [""]
+        print "ARGS:",args
+        command = "\n".join(["""python {} {} {}""".format(os.path.realpath(__file__), self.file, arg) for arg in args])
         submitter.submit(file_name, command, self.walltime)
 
     def save_and_submit(self):
@@ -107,6 +111,8 @@ class OptmavenExperiment(Experiment):
             self.charmm_energy_terms = standards.DefaultCharmmEnergyTerms
             self.charmm_iterations = standards.DefaultCharmmIterations
             self.clash_cutoff = standards.DefaultClashCutoff
+            self.walltime = standards.DefaultWalltime
+            self.batch_size = standards.DefaultBatchSize
         # Define the antigen and epitope.
         entire_input_model = self.get_entire_input_model()
         antigen_input_chains = self.select_antigen_input_chains(entire_input_model)
@@ -118,9 +124,10 @@ class OptmavenExperiment(Experiment):
         self.report_directory()
         self.save_and_submit()
 
-    def run(self):
+    def run(self, args):
         tasks = {
-            1: self.relax_antigen
+            1: self.relax_antigen,
+            2: self.one_maps_energy
         }
         try:
             try:
@@ -128,7 +135,7 @@ class OptmavenExperiment(Experiment):
             except KeyError:
                 raise ValueError("Bad Experiment status: {}".format(self.status))
             else:
-                task()
+                task(args)
         except Exception as e:
             tb = traceback.format_exc()
             self.document_error(tb)
@@ -136,7 +143,7 @@ class OptmavenExperiment(Experiment):
             self.status += 1
             self.save_and_submit()
 
-    def relax_antigen(self):
+    def relax_antigen(self, args):
         antigen_molecule = molecules.Molecule(self.antigen_input_name, self.antigen_input_file, self)
         self.antigen_relaxed_name = "relaxed_antigen"
         self.antigen_relaxed_file = os.path.join(self.structure_directory, "antigen_relaxed.pdb")
@@ -163,12 +170,11 @@ class OptmavenExperiment(Experiment):
             epi_vector = epi_center - all_center
             # Make a rotation matrix that rotates the epitope vector to the negative z axis.
             neg_z_axis = np.array([0., 0., -1.])
-            
             rot_axis = np.cross(epi_vector, neg_z_axis)
             if np.allclose(rot_axis, 0, atol=0.001):
                 rot_matrix = np.eye(coord_n)
             else:
-                rot_matrix = standards.rotate_vi_to_vf(epi_vector, [0, 0, -1])
+                rot_matrix = standards.rotate_vi_to_vf(epi_vector, neg_z_axis)
         self.epitope_zmin_file = os.path.join(self.structure_directory, "antigen_epitope_down.pdb")
         antigen_molecule.rotate(rot_matrix, self.epitope_zmin_file, in_place=True)
         # Rotate the antigen so that its z rotation angle is 0.
@@ -180,7 +186,44 @@ class OptmavenExperiment(Experiment):
         self.positions_file = os.path.join(self.temp, "positions.dat")
         with klaus.PositionAntigen(self) as x:
             pass
+        self.status += 1
+        self.all_maps_energies(None)
 
+    def get_maps_part_energy_directory(self, part):
+        return os.path.join(self.maps_energies_directory, part)
+
+    def get_maps_part_energy_file_temp(self, part):
+        return os.path.join(self.get_maps_part_energy_directory(part), "{}_energies_temp.dat".format(part))
+    
+    def get_maps_part_energy_file_finished(self, part):
+        return os.path.join(self.maps_energies_directory, "{}_energies.dat".format(part))
+
+    def all_maps_energies(self, args):
+        """ Calculate the interacton energy between the antigen and all MAPs parts. """
+        self.maps_energies_directory = os.path.join(self.temp, "maps_energies")
+        if not os.path.isdir(self.maps_energies_directory):
+            os.mkdir(self.maps_energies_directory)
+        # Check which parts have not finished.
+        unfinished_parts = [part for part in maps.parts if not os.path.isfile(self.get_maps_part_energy_file_finished(part))]
+        unstarted_parts = [part for part in maps.parts if not os.path.isfile(self.get_maps_part_energy_file_temp(part))]
+        #FIXME: better way to tell which parts are unstarted.
+        collected_parts = list()
+        for part in unstarted_parts:
+            collected_parts.append(part)
+            if len(collected_parts) == self.batch_size:
+                self.submit(collected_parts)
+                collected_parts = list()
+        
+    def one_maps_energy(self, args):
+        """ Calculate the interacton energy between the antigen and one MAPs part. """
+        try:
+            part = args[2]
+        except IndexError:
+            #self.all_maps_energies(args)
+        else:
+            print "CALCULATING ENERGIES FOR", part
+        
+        
     def get_entire_input_model(self):
         # Select the antigen file.
         self.entire_input_name = "entire_input_file"
@@ -260,4 +303,4 @@ if __name__ == "__main__":
     experiment_file = sys.argv[1]
     with open(experiment_file) as f:
         experiment = pkl.load(f)
-    experiment.run()
+    experiment.run(sys.argv)
