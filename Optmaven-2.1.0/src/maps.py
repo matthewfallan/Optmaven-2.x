@@ -87,6 +87,14 @@ def split_cdr(item):
         raise ValueError("Bad MAPs item: {}".format(item))
 
 
+def get_part_cdr(part):
+    return split(part)[0]
+
+
+def get_part_number(part):
+    return split(part)[1]
+
+
 def get_chain(item):
     """ Get the chain (H, K, or L) of a part or cdr. """
     return split_cdr(item)[0]

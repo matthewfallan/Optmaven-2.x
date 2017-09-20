@@ -85,6 +85,18 @@ class CharmmProc(object):
                 "close unit 10"])
         self.lines.extend(ic_fill())
 
+    def energy(self):
+        handle, self.energy_file = tempfile.mkstemp(dir=self.directory, prefix="energy_", suffix=".dat")
+        os.close(handle)
+        self.garbage.append(self.energy_file)
+        self.lines.extend(["! Calculate the energy.",
+            "ener",
+            "set tot ?ener",
+            "open write card unit 10 name {}".format(os.path.basename(self.energy_file)),
+            "write title unit 10",
+            "*@tot",
+            "close unit 10"])
+
     def relax(self):
         self.lines.extend(["! Carry out an energy minimization",
             "nbon nbxm 5",
@@ -92,7 +104,7 @@ class CharmmProc(object):
             "mini abnr nstep {} nprint 50 -".format(self.experiment.charmm_iterations),
             #"tolgrd 0.01 tolenr 0.0001 tolstp 0.00"])
             "tolgrd 0.1 tolenr 0.1 tolstp 0.00"])
-    #FIXME
+    #FIXME: change tolgrd and tolenr to 0.01 and 0.0001
 
     def output_molecules(self):
         self.output_molecule_files = list()
@@ -138,6 +150,39 @@ class CharmmProc(object):
     def __exit__(self, exc_type, exc_value, traceback):
         os.chdir(self.previous_directory)
         self.collect_garbage()
+
+
+class Energy(CharmmProc):
+    def __enter__(self):
+        CharmmProc.__enter__(self)
+        self.begin_script()
+        self.load_input_files()
+        self.load_molecules()
+        self.energy()
+        self.end_script()
+        self.charmm()
+        with open(self.energy_file) as f:
+            self.energy = float(f.read())
+        return self
+
+
+class InteractionEnergy(CharmmProc):
+    def __init__(self, experiment, molecule_list):
+        CharmmProc.__init__(self, experiment, molecule_list)
+        if len(self.molecules) == 2:
+            self.mol1, self.mol2 = self.molecules
+        else:
+            raise ValueError("An interaction energy calculation needs exactly two molecules.")
+
+    def __enter__(self):
+        with Energy(self.experiment, [self.mol1]) as e1:
+            energy1 = e1.energy
+        with Energy(self.experiment, [self.mol2]) as e2:
+            energy2 = e2.energy
+        with Energy(self.experiment, self.molecules) as e12:
+            energy12 = e12.energy
+        self.energy = e12 - (e1 + e2)
+        return self
 
 
 class Relaxation(CharmmProc):

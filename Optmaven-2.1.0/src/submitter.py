@@ -95,7 +95,7 @@ def script_initial(queue, walltime):
     hours = walltime_hours
     walltime_text = "{0:>2}:{0:>2}:{0:>2}".format(hours, mins, secs)
     lines = ["#!/bin/sh",
-             "#PBS -q lionxv",
+             "#PBS -q {}".format(queue),
              "#PBS -l walltime={}".format(walltime_text)]
     return lines
 
@@ -104,7 +104,6 @@ def write_script(file_name, command, walltime, array=0):
     lines = script_initial(standards.PbsQueue, walltime)
     if array > 0:
         lines.append("#PBS -t {}-{}".format(1, array))
-    lines.append("#module load {}".format(standards.PythonModule))
     if isinstance(command, list):
         lines.extend(command)
     else:

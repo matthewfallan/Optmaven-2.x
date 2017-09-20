@@ -1,6 +1,6 @@
 """ This module defines the Experiment class of OptMAVEn. """
 
-from collections import defaultdict
+from collections import defaultdict, OrderedDict
 import cPickle as pkl
 #import multiprocessing
 import os
@@ -11,6 +11,7 @@ import traceback
 
 from Bio.PDB import Residue, Selection
 from Bio.PDB.PDBIO import Select
+from Bio import SeqIO
 import numpy as np
 
 from console import clear, disp
@@ -174,10 +175,21 @@ class OptmavenExperiment(Experiment):
             self.document_error(tb)
 
     def finish(self, args):
+        report_info = list()
+        report_fields = [
+            ("Total positions", self.positions),
+            ("Selected designs", self.select_number)
+        ]
+        report_info.extend([info_format(field, value) for field, value in report_fields])
+        for index in range(self.select_number):
+            with open(self.results_pickle_file) as f:
+                result = pkl.load(f)
+            result_info = result.output()
+            report_info.append(result_info)
+        report_text = "\n".join(report_info)
         self.report_file = os.path.join(self.directory, "report.txt")
         with open(self.report_file, "w") as f:
-            pass
-            #FIXME
+            f.write(report_text)
 
     def relax_antigen(self, args):
         antigen_molecule = molecules.Molecule(self.antigen_input_name, self.antigen_input_file, self)
@@ -206,6 +218,8 @@ class OptmavenExperiment(Experiment):
         antigen_molecule.rotate(rot_matrix, self.epitope_zmin_file, in_place=True)
         # Rotate the antigen so that its z rotation angle is 0.
         #FIXME
+        # Translate the antigen along the z axis to center the epitope at the origin.
+        antigen_molecule.translate(standards.zAxis * np.linalg.norm(epi_vector),in_place=True)
         # Position the antigen using a grid search.
         self.position_antigen()
         
@@ -257,7 +271,7 @@ class OptmavenExperiment(Experiment):
                     except ValueError:
                         raise ValueError("Cannot parse line in MAPs energy file {}:\n{}".format(_file, line))
                     position = (zAngle, x, y, z)
-                    maps_energies[position].append([maps.part_category[part], maps.part_number[part], energy])
+                    maps_energies[position].append([maps.get_part_cdr(part), maps.get_part_number(part), energy])
         self.change_status()
         #FIXME: remove maps energies directory
         #FIXME: remove the writing of this pickle file.
@@ -317,9 +331,7 @@ class OptmavenExperiment(Experiment):
         # The energy is the total interaction energy between the selected parts and antigen
         #solution, energy = OptMAVEn_selector(energies, struCuts, solutionCuts)
         solution, energy = maps.select_parts(position_energies, clash_cuts, solution_cuts)
-        # Store the selected parts in a list
-        selected_parts = [maps.join(category, part) for category, part in solution.items()]
-        antibody = molecules.ProtoAntibody(selected_parts, position, energy)
+        antibody = molecules.ProtoAntibody(solution, position, energy)
         with open(self.get_select_parts_file_finished(index), "w") as f:
             pkl.dump(antibody, f)
 
@@ -330,52 +342,63 @@ class OptmavenExperiment(Experiment):
             with open(design) as f:
                 antibody = pkl.load(f)
             antibodies[antibody.light_chain].append(antibody)
-        #clusters = {chain: [sorted(cluster) for cluster in kmeans.optimal_kmeans(chain_abs)] for chain, chain_abs in antibodies.iteritems()}
-        clusters = {"L": [sorted(cluster) for cluster in kmeans.optimal_kmeans(antibodies["L"])]}
-        print "CLUSTERS", clusters
+        clusters = {chain: [sorted(cluster) for cluster in kmeans.optimal_kmeans(chain_abs)] for chain, chain_abs in antibodies.iteritems()}
+        #FIXME
+        #clusters = {"L": [sorted(cluster) for cluster in kmeans.optimal_kmeans(antibodies["L"])]}
         # Select the best antibodies from the clusters.
-        best_antibodies = list()
+        self.highest_ranked_designs = list()
         cluster_depth = 0
-        select_number = min(self.number_of_designs, len(self.positions))
-        while len(best_antibodies) < select_number:
+        self.select_number = min(self.number_of_designs, len(self.positions))
+        while len(self.highest_ranked_designs) < self.select_number:
             # Collect the best unused design from each cluster that has not been exhausted.
             cluster_heads = list()
-            print "COLLECTING"
             for light_chain, light_chain_clusters in clusters.iteritems():
-                print "LC", light_chain
                 for cluster in light_chain_clusters:
-                    print "CLUSTER", cluster
                     if len(cluster) > cluster_depth:
-                        print "AB", cluster[cluster_depth]
                         cluster_heads.append(cluster[cluster_depth])
             # Add these designs to the list of best designs, in order of increasing energy.
             cluster_heads.sort()
-            print "HEADS", cluster_heads
-            while len(best_antibodies) < select_number and len(cluster_heads) > 0:
-                best_antibodies.append(cluster_heads.pop(0))
-        print "BEST", best_antibodies
+            while len(self.highest_ranked_designs) < self.select_number and len(cluster_heads) > 0:
+                self.highest_ranked_designs.append(cluster_heads.pop(0))
         self.unrelaxed_complex_directory = os.path.join(self.get_temp(), "unrelaxed_complexes")
         try:
             os.mkdir(self.unrelaxed_complex_directory)
         except OSError:
             pass
-        self.unrelaxed_complex_files = [os.path.join(self.unrelaxed_complex_directory, "complex_{}.pdb".format(i)) for i, antibody in enumerate(best_antibodies)]
-        [ab.to_molecule("unrelaxed", _file, self) for ab, _file in zip(best_antibodies, self.unrelaxed_complex_files)]
+        self.unrelaxed_complex_files = [os.path.join(self.unrelaxed_complex_directory, "complex_{}.pdb".format(i)) for i in range(self.select_number)]
+        [ab.to_molecule("unrelaxed", _file, self) for ab, _file in zip(self.highest_ranked_designs, self.unrelaxed_complex_files)]
         self.change_status() 
         self.relax_complexes_all()
 
+    def relaxed_complex_directory(self):
+        return os.path.join(self.directory, "antigen-antibody-complexes")
+
+    def relaxed_complex_file(self, index):
+        return os.path.join(self.relaxed_complex_directory(), "complex_{}.pdb".format(index))
+
+    def results_directory(self, index):
+        return os.path.join(self.relaxed_complex_directory(), "Result_{}".format(index))
+
+    def results_pickle_directory(self):
+        return os.path.join(self.get_temp(), "results")
+
+    def result_name(self, index):
+        return "Result_{}".format(index)
+
+    def results_pickle_file(self, index):
+        return os.path.join(self.results_pickle_directory(), "result_{}.pickle".format(index))
+
     def relax_complexes_all(self):
-        print "RELAX COMPLEXES ALL" #FIXME
-        self.relaxed_complex_directory = os.path.join(self.directory, "antigen-antibody-complexes")
         try:
-            os.mkdir(self.relaxed_complex_directory)
+            os.mkdir(self.relaxed_complex_directory())
         except OSError:
             pass
-        self.relaxed_complex_files = [os.path.join(self.relaxed_complex_directory, "complex_{}.pdb".format(i)) for i, _file in enumerate(self.unrelaxed_complex_files)]
-        jobs = {index: _file for index, _file in enumerate(self.relaxed_complex_files)}
-        print "PRESAVED" #FIXME 
+        try:
+            os.mkdir(self.results_pickle_directory())
+        except OSError:
+            pass
+        jobs = {index: self.results_pickle_file(index) for index in range(self.select_number)}
         self.save()
-        print "SAVED" #FIXME
         self.submit(jobs=jobs)
 
     def relax_complexes_batch(self, args):
@@ -386,8 +409,21 @@ class OptmavenExperiment(Experiment):
             self.relax_complex_single(index)
 
     def relax_complex_single(self, index):
-        _complex = molecules.Molecule("unrelaxed", self.unrelaxed_complex_files[index], self)
-        _complex.relax(relaxed_file=self.relaxed_complex_files[index], in_place=False)
+        garbage = list()
+        _complex = molecules.AntibodyAntigenComplex("relaxed", self.unrelaxed_complex_files[index], self)
+        # Calculate interaction energy before relaxation.
+        antigen, antibody = _complex.disassemble_into_chains([_complex.antigen_chains, _complex.antibody_chains])
+        garbage.extend([antigen.file, antibody.file])
+        unrelaxed_energy = charmm.InteractionEnergy(self, [antigen, antibody])
+        # Relax the complex.
+        _complex.relax(relaxed_file=self.relaxed_complex_file(index), in_place=False)
+        # Calculate interaction energy after relaxation.
+        antigen, antibody = _complex.disassemble_into_chains([_complex.antigen_chains, _complex.antibody_chains])
+        garbage.extend([antigen.file, antibody.file])
+        relaxed_energy = charmm.InteractionEnergy(self, [antigen, antibody])
+        result = OptmavenResult(self.result_name(index), self.results_directory(index), _complex, self.highest_ranked_antibodies[index], unrelaxed_energy, relaxed_energy) 
+        with open(self.results_pickle_file(index), "w") as f:
+            pkl.dump(result, f)
         
     def get_entire_input_model(self):
         # Select the antigen file.
@@ -440,6 +476,46 @@ class OptmavenExperiment(Experiment):
             raise OSError("Missing molecule files: {}".format(", ".join(missing)))
         return molecules_list
 
+
+class OptmavenResult(object):
+    """ Stores information about one result from an Optmaven experiment. """
+    def __init__(self, name, directory, molecule, maps_parts, position, unrelaxed_energy, relaxed_energy):
+        self.name = name
+        self.directory = directory
+        self.molecule = molecule
+        self.proto_antibody = proto_antibody
+        self.unrelaxed_energy = unrelaxed_energy
+        self.relaxed_energy = relaxed_energy
+
+    def output(self, directory):
+        try:
+            os.mkdir(self.directory)
+        except OSError:
+            pass
+        info = list()
+        info.append("Name", self.name)
+        # Write the molecule.
+        self.molecule_file = os.path.join(self.directory, "{}.pdb".format(self.name))
+        shutil.copyfile(self.molecule.file, self.molecule_file)
+        info.append(info_format("PDB file", self.molecule_file)) 
+        # Get the sequence and output it as a fasta.
+        self.fasta_file = os.path.join(self.directory, "{}.fasta".format(self.name))
+        SeqIO.write(SeqIO.parse(self.molecule_file, "pdb-atom"), self.fasta_file, "fasta")
+        info.append("FASTA sequences")
+        with open(self.fasta_file) as f:
+            info.append(f.read())
+        info.append("MAPs parts")
+        [info.append(info_format(field, value)) for field, value in self.proto_antibody.get_namesake_parts()]
+        info.append("Position")
+        [info.append(info_format(field, value)) for field, value in self.proto_antibody.get_labeled_position()]
+        info.append(info_format("Unrelaxed energy", self.unrelaxed_energy))
+        info.append(info_format("Relaxed energy", self.relaxed_energy))
+        return "\n".join(info)
+
+
+def info_format(field, value):
+    return "{}\t{}".format(field, value)
+        
 
 if __name__ == "__main__":
     if len(sys.argv) < 2:

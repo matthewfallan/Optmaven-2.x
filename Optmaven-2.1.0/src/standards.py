@@ -57,7 +57,6 @@ PbsJobFilePrefix = "job-"
 
 # Python settings.
 PythonCommand = "python"
-PythonModule = "python/2.7.5.ucs4"
 
 # Optmaven grid settings.
 DefaultOptmavenGrid_x = np.linspace(-5, 10, 7)

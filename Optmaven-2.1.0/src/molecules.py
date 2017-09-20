@@ -1,6 +1,6 @@
 """ This modules manages molecules. """
 
-from collections import defaultdict
+from collections import defaultdict, OrderedDict
 import itertools
 import os
 import tempfile
@@ -104,6 +104,31 @@ class Molecule(object):
         if in_place:
             if relaxed_file != self.file:
                 self.file = relaxed_file
+
+    def disassemble_into_chains(self, chain_groups=None, prefix=None, structure=None, directory=None):
+        """ Disassemble a molecule into its chains. Each chain becomes a Molecule. """
+        if structure is None:
+            structure = self.get_structure()
+        if directory is None:
+            directory = self.directory
+        if prefix is None:
+            prefix, suffix = os.path.splitext(os.path.basename(self.file))
+        models = structure.get_list()
+        if len(models) > 1:
+            raise NotImplementedError("Optmaven cannot currently handle Molecules with {} models.".format(len(models)))
+        chains = (models[0]).get_list()
+        if chain_groups is None:
+            chain_groups = [[chain.get_id()] for chain in chains]
+        chain_molecules = list()
+        for chain_group in chain_groups:
+            selector = SelectChains(chain_group)
+            chain_ids = "".join(chain_group)
+            chain_name = "{}_chain{}".format(self.name, chain_ids)
+            file_name = os.path.join(directory, "{}_chain{}.pdb".format(prefix, chain_ids))
+            self.write_pdb(structure, file_name, selector, preserve_atom_numbering=False)
+            chain_molecule = Molecule(chain_name, file_name, self.experiment)
+            chain_molecules.append(chain_molecule)
+        return chain_molecules
 
     def disassemble_for_CHARMM(self, structure=None, directory=None):
         # Rename all of the residues so that they correspond to the CHARMM naming conventions.
@@ -209,7 +234,6 @@ class Molecule(object):
         if center:
             # Move the molecule back to its original position.
             self.translate(original_center, file_name, in_place)
-            assert(np.all(np.isclose(self.get_center(), original_center)))
 
     def get_atoms(self):
         structure = self.get_structure()
@@ -242,8 +266,28 @@ class Molecule(object):
         return classified_contacts
 
 
-class Antibody(Molecule):
-    pass
+class AntibodyAntigenComplex(Molecule):
+    def __init__(self, name, file_, experiment):
+        Molecule.__init__(self, name, file_, experiment)
+        # Identify the light and heavy chain loci.
+        chain_ids = [chain.get_id() for chain in self.get_chains()]
+        self.light_chain = None
+        self.heavy_chain = None
+        self.antigen_chains = list()
+        for _id in chain_ids:
+            if _id in standards.MapsLightChains:
+                if self.light_chain is not None:
+                    raise ValueError("An Antibody may not have multiple light chains.")
+                self.light_chain = _id
+            elif _id in standards.MapsHeavyChains:
+                if self.heavy_chain is not None:
+                    raise ValueError("An Antibody may not have multiple heavy chains.")
+                self.heavy_chain = _id
+            else:
+                self.antigen_chains.append(_id)
+        if self.light_chain is None or self.heavy_chain is None or len(self.antigen_chains) == 0:
+            raise ValueError("An AntibodyAntigenComplex must have heavy, light, and antigen chains, not {}".format(", ".join(chain_ids)))
+        self.antibody_chains = [self.heavy_chain, self.light_chain]
 
 
 class ProtoAntibody(object):
@@ -275,6 +319,16 @@ class ProtoAntibody(object):
             return maps.translate_chain(cdr, self.light_chain)
         else:
             return cdr
+
+    def get_namesake_parts(self):
+        parts = OrderedDict()
+        for cdr in standards.MapsNamesakeCdrs:
+            self_cdr = self.translate_cdr(cdr)
+            parts[cdr] = maps.join(self_cdr, self.parts[self_cdr])
+        return parts
+
+    def get_labeled_position(self):
+        return OrderedDict([(label, coord) for label, coord in zip(standards.PositionOrder, self.position)])
     
     def get_coords(self):
         if self.coords is None:
