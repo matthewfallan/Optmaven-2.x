@@ -33,6 +33,7 @@ set positionsFile [lindex $argv 1]
 set clashCutoff [lindex $argv 2]
 set clashesPermitted 0
 
+# Read the grid levels.
 set xLevels [split [readAttribute $gridFile "x" 1]]
 set yLevels [split [readAttribute $gridFile "y" 1]]
 set zLevels [split [readAttribute $gridFile "z" 1]]

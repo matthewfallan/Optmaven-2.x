@@ -3,6 +3,7 @@
 from collections import defaultdict
 import itertools
 import os
+import tempfile
 import warnings
 
 from Bio.PDB import NeighborSearch, MMCIFParser, PDBParser, Residue, Selection, Structure
@@ -13,6 +14,9 @@ import numpy as np
 
 import charmm
 from console import disp
+import klaus
+import maps
+import standards
 import user_input
 
 
@@ -30,7 +34,7 @@ class Molecule(object):
         self.exclude_hetero_ask = exclude_hetero_ask
         self.excluded_residue_ids = None
         self.experiment = experiment
-        self.dims = ["x", "y", "z"]
+        self.dims = standards.AtomCoordOrder
         self.ndim = len(self.dims)
     
     def get_structure(self, file_name=None):
@@ -154,12 +158,14 @@ class Molecule(object):
     def get_coords(self):
         return self.get_atom_array()[self.dims].view(dtype=np.float).reshape(-1, self.ndim)
 
-    def translate_to(self, point=None, file_name=None, in_place=None):
+    def get_center(self):
+        return np.mean(self.get_coords(), axis=0)
+
+    def translate_to(self, point=None, file_name=None, in_place=False):
         if point is None:
              point = np.array([0., 0., 0.])
         point = np.array(point)
-        coords = self.get_coords()
-        center = np.mean(coords, axis=0)
+        center = self.get_center()
         self.translate(point - center, file_name, in_place)
 
     def translate(self, vector, file_name=None, in_place=False):
@@ -174,17 +180,22 @@ class Molecule(object):
         # Replace all of the atomic coordinates.
         for coord, atom in zip(trans_coords, atoms):
             atom.set_coord(coord)
-        # Write the rotated coordinates.
+        # Write the translated coordinates.
         structure = atom.get_parent().get_parent().get_parent().get_parent()
         self.write_pdb(structure, file_name)
         if in_place:
             self.file = file_name
 
-    def rotate(self, rot_matrix, file_name=None, in_place=False):
+    def rotate(self, rot_matrix, file_name=None, in_place=False, center=True):
         if file_name is None:
             if in_place is False:
                 raise ValueError("A rotation file must be given if the rotation is to not be in place.")
             file_name = self.file
+        if center:
+            # First get the original center.
+            original_center = self.get_center()
+            # Move the molecule to the origin before the rotation.
+            self.translate(-original_center, file_name, in_place)
         rot_coords = np.dot(self.get_coords(), rot_matrix)
         atoms = self.get_atoms()
         # Replace all of the atomic coordinates.
@@ -195,6 +206,10 @@ class Molecule(object):
         self.write_pdb(structure, file_name)
         if in_place:
             self.file = file_name
+        if center:
+            # Move the molecule back to its original position.
+            self.translate(original_center, file_name, in_place)
+            assert(np.all(np.isclose(self.get_center(), original_center)))
 
     def get_atoms(self):
         structure = self.get_structure()
@@ -225,6 +240,144 @@ class Molecule(object):
             elif chain_2 in chain_ids_1 and chain_1 in chain_ids_2:
                 classified_contacts[(chain_2, chain_1)].append({chain_1: contact[0], chain_2: contact[1]})
         return classified_contacts
+
+
+class Antibody(Molecule):
+    pass
+
+
+class ProtoAntibody(object):
+    """ A proto-antibody stores a set of six CDRs. """
+    def __init__(self, parts, position, energy):
+        self.parts = dict()
+        self.position = position
+        self.energy = energy
+        self.light_chain = None
+        self.coords = None
+        for cdr, number in parts.items():
+            # Ensure that lambda and kappa chains are not mixed.
+            chain = maps.get_chain(cdr)
+            if chain in maps.light_chains:
+                if self.light_chain is None:
+                    self.light_chain = chain
+                elif self.light_chain != chain:
+                    raise ValueError("An antibody may not contain both lambda and kappa chains.")
+            self.parts[cdr] = str(number)
+        # Ensure that all CDRs are present (with no extras).
+        all_cdrs = sorted(maps.get_cdr_names(self.light_chain))
+        self_cdrs = sorted(self.parts.keys())
+        if self_cdrs != all_cdrs:
+            raise ValueError("Expected CDRs {}, got {}".format(",".join(all_cdrs), ",".join(self_cdrs)))
+
+    def translate_cdr(self, cdr):
+        chain, region = maps.split_cdr(cdr)
+        if chain in maps.light_chains:
+            return maps.translate_chain(cdr, self.light_chain)
+        else:
+            return cdr
+    
+    def get_coords(self):
+        if self.coords is None:
+            coords = list()
+            order = standards.CoordOrder
+            for coord in standards.CoordOrder:
+                if coord in standards.PositionCoordOrder:
+                    if coord in standards.PositionOrder:
+                        value = self.position[standards.PositionOrder.index(coord)]
+                    elif standards.AngleLabel in coord:
+                        if standards.SinLabel in coord:
+                            _coord = coord.replace(standards.SinLabel, "")
+                            fxn = np.sin
+                        elif standards.CosLabel in coord:
+                            _coord = coord.replace(standards.CosLabel, "")
+                            fxn = np.cos
+                        else:
+                            _coord = coord
+                            fxn = lambda x: x
+                        value = fxn(self.position[standards.PositionOrder.index(_coord)])
+                    else:
+                        value = None
+                    if value is not None:
+                        coords.append(value)
+                        continue
+                try:
+                    cdr, dim = standards.to_maps_coord(coord)
+                except TypeError:
+                    pass
+                else:
+                    cdr = self.translate_cdr(cdr)
+                    part = maps.join(cdr, self.parts[cdr])
+                    coords.append(maps.get_coordinates(part, standards.DefaultGapPenalty)[dim])
+                    continue
+                raise ValueError("Bad coordinate: {}".format(coord))
+            self.coords = np.array(coords)
+        return self.coords
+
+    def to_molecule(self, name, _file, experiment):
+        # First create the antibody heavy and light chains.
+        garbage = list()
+        directory = tempfile.mkdtemp(dir=experiment.get_temp(), prefix="to_mol")
+        ab_name = "ab_temp"
+        ab_file = os.path.join(directory, "ab_temp.pdb")
+        garbage.append(ab_file)
+        parts = [maps.join(cdr, number) for cdr, number in self.parts.items()]
+        with klaus.CreateAntibody(experiment, parts, ab_file) as p:
+            pass
+        antibody = Molecule(ab_name, ab_file, experiment)
+        # Then position the antigen.
+        ag_name = "ag_temp"
+        ag_file = os.path.join(directory, "ag_temp.pdb")
+        garbage.append(ag_file)
+        x = self.position[standards.PositionOrder.index(standards.xLabel)]
+        y = self.position[standards.PositionOrder.index(standards.yLabel)]
+        z = self.position[standards.PositionOrder.index(standards.zLabel)]
+        zAngle = self.position[standards.PositionOrder.index(standards.zAngleLabel)]
+        rot_matrix = standards.rotate_axis_angle(standards.zAxis, zAngle)
+        antigen = Molecule(ag_name, experiment.epitope_zmin_file, experiment)
+        antigen.rotate(rot_matrix, file_name=ag_file, in_place=False)
+        # Merge the antigen and antibody and save the structure as a PDB..
+        _complex = merge([antibody, antigen], return_molecule=True, merged_name=name, merged_file=_file, write_pdb=True)
+        for item in garbage:
+            try:
+                os.remove(item)
+            except OSError:
+                pass
+        try:
+            os.rmdir(directory)
+        except OSError:
+            pass
+        # Return the merged antibody-antigen complex.
+        return _complex
+
+    def __iter__(self):
+        return iter(self.get_coords())
+
+    def __eq__(self, other):
+        if isinstance(other, ProtoAntibody):
+            return self.energy == other.energy
+        else:
+            return self.energy == other
+
+    def __ne__(self, other):
+        return not (self == other)
+
+    def __lt__(self, other):
+        if isinstance(other, ProtoAntibody):
+            return self.energy < other.energy
+        else:
+            return self.energy < other
+
+    def __gt__(self, other):
+        if isinstance(other, ProtoAntibody):
+            return self.energy > other.energy
+        else:
+            return self.energy > other
+
+    def __le__(self, other):
+        return self == other or self < other
+
+    def __ge__(self, other):
+        return self == other or self > other
 
 
 class SelectChains(Select):

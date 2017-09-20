@@ -132,7 +132,7 @@ def select_from_list(prompt, list_, min_number=None, max_number=None, names=None
                     for key in selection_keys:
                         pdb_code = os.path.splitext(key)[0].upper()
                         #disp(pdb_code)
-                        PDBList.retrieve_pdb_file(pdb_code, pdir=fetch_pdir)
+                        PDBList().retrieve_pdb_file(pdb_code, pdir=fetch_pdir)
                         if os.path.isfile(os.path.join(fetch_pdir, key)):
                             list_.append(key)
                             names.append(str(key))

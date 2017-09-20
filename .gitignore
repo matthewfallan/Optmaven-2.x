@@ -1,0 +1,8 @@
+# ignore Optmaven experiments
+Optmaven-2.1.0/experiments
+
+# ignore tar files
+*.tar*
+
+# ignore OLD files
+*.OLD

@@ -1,59 +1,52 @@
 # Merge an antigen and a MAPs part into a single molecule and generate a PDB and PSF.
 # The following command-line arguments are required:
 # -e: the name of this script
-# -args: 0: the experiment's directory
-#        1: the coordinates of the antigen
-#        2: the coordinates of the MAPs part
-#        3: the prefix of the combined structure
-#        4: the segment of the antigen
-#        5: the segment of the MAPs part
-#        6: the first topology file
-#        7: (optional) the second topology file
+# -args: 0: the coordinates of the antigen
+#        1: the coordinates of the MAPs part
+#        2: the prefix of the combined structure
+#        3: the first topology file
+#        4: (optional) the second topology file
 #        etc.
+
+# Load the VMD functions.
+source vmd_functions.tcl
 
 # The psfgen package is required.
 package require psfgen
 
-# Load the VMD functions.
-set InstallFolder "/gpfs/work/m/mfa5147/OptMAVEn_Zika/OptMAVEn2.0"
-source $InstallFolder/modules/VMD_FUNCTIONS.tcl
-
 # Load the arguments.
-if {[llength $argv] < 7} {
-	puts "Usage: -args experiment/directory antigen/coordinates.pdb MAPs/part/coordinates.pdb combined/structure/prefix antigenSegment MAPsSegment topology/file1.rtf (optional) topology/file2.rtf ..."
+if {[llength $argv] < 4} {
+	puts "Usage: -args antigen/coordinates.pdb MAPs/part/coordinates.pdb combined/structure/prefix topology/file1.rtf (optional) topology/file2.rtf ..."
 	exit 1
 }
-set expDir [lindex $argv 0]
-set AgPDB [lindex $argv 1]
-set MAPsPDB [lindex $argv 2]
-set combined [lindex $argv 3]
-set antigenSegment [lindex $argv 4]
-set MAPsSegment [lindex $argv 5]
+set AgPDB [lindex $argv 0]
+set MAPsPDB [lindex $argv 1]
+set combined [lindex $argv 2]
 
 # Read the topology file and alias the atoms.
-for {set i 6} {$i < [llength $argv]} {incr i} {
+for {set i 3} {$i < [llength $argv]} {incr i} {
 	topology [lindex $argv $i]
 }
 pdbalias residue HIS HSE
 pdbalias atom ILE CD1 CD
 
 # Build a segment for the antigen.
-segment $antigenSegment {
+segment [antigenSegment] {
 	pdb $AgPDB
 }
 
 # Read antigen coordinates into the antigen segment.
-coordpdb $AgPDB $antigenSegment
+coordpdb $AgPDB [antigenSegment]
 
 # Build a segment for the MAPs part. Do not patch the terminal residues.
-segment $MAPsSegment {
+segment [mapsSegment] {
     first none
     last none
 	pdb $MAPsPDB
 }
 
 # Read the immunoglobulin coordinates into the MAPs segment.
-coordpdb $MAPsPDB $MAPsSegment
+coordpdb $MAPsPDB [mapsSegment]
 
 # Create the PDB and PSF.
 writepdb "$combined.pdb"

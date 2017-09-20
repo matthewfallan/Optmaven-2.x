@@ -18,6 +18,15 @@ proc vectorAngle {v1 v2} {
 	return [expr acos([vecdot $v1 $v2] / ([veclength $v1] * [veclength $v2]))]
 }
 
+# The names of the MAPs and Antigen segments.
+proc antigenSegment {} {
+	return "AGEN"
+}
+
+proc mapsSegment {} {
+	return "MAPS"
+}
+
 # Compute the angle (in radians, from 0 to 2pi) between the x axis and the projection of a vector onto the x axis.
 proc angleToX {vec} {
         #FIXME

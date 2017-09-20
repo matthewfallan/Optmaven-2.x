@@ -1,17 +1,21 @@
 """ This module defines the Experiment class of OptMAVEn. """
 
+from collections import defaultdict
 import cPickle as pkl
+#import multiprocessing
 import os
 import sys
 import tempfile
+import time
 import traceback
 
 from Bio.PDB import Residue, Selection
 from Bio.PDB.PDBIO import Select
 import numpy as np
 
-from console import disp
+from console import clear, disp
 import klaus
+import kmeans
 import maps
 import molecules
 import standards
@@ -21,9 +25,10 @@ import user_input
 
 class Experiment(object):
     def __init__(self):
+        clear()
         do = True
         while do:
-            name = self.ask("name")
+            name = self.ask("name", valid_path=True)
             directory = os.path.join(standards.ExperimentsDirectory, name)
             if os.path.isdir(directory):
                 disp("There is already an Experiment named {}.".format(name))
@@ -47,29 +52,40 @@ class Experiment(object):
         with open(self.file, "w") as f:
             pkl.dump(self, f)
 
-    def submit(self, args=None):
-        handle, file_name = tempfile.mkstemp(prefix="{}_".format(self.name_contig), suffix=".sh", dir=self.temp)
-        os.close(handle)
+    def submit(self, args=None, jobs=None, options=None, queue=True):
         if args is None:
             args = [""]
-        print "ARGS:",args
-        command = "\n".join(["""python {} {} {}""".format(os.path.realpath(__file__), self.file, arg) for arg in args])
-        submitter.submit(file_name, command, self.walltime)
+        if jobs is None:
+            handle, file_name = tempfile.mkstemp(prefix="{}_".format(self.name_contig), suffix=".sh", dir=self.temp)
+            os.close(handle)
+            command = "\n".join(["{} {} {} {}".format(standards.PythonCommand, os.path.realpath(__file__), self.file, arg) for arg in args])
+            submitter.submit(file_name, command, self.walltime, options=options, queue=queue)
+        else:
+            s = submitter.PbsBatchSubmitter(self)
+            print "SUBMITTING" #FIXME
+            s.submit(standards.PythonCommand, [os.path.realpath(__file__), self.file], jobs)
 
-    def save_and_submit(self):
+    def save_and_submit(self, queue=True):
         self.save()
-        self.submit()
+        self.submit(queue=queue)
 
-    def ask(self, attribute, number=False):
+    def ask(self, attribute, number=False, valid_path=False):
         try:
             name = self.name
         except AttributeError:
             name = "this Experiment"
         prompt = "Please enter the {} of {}: ".format(attribute, name)
-        if number:
-            return user_input.get_number(prompt)
-        else:
-            return user_input.get(prompt)
+        do = True
+        while do:
+            if number:
+                answer = user_input.get_number(prompt)
+            else:
+                answer = user_input.get(prompt)
+            if not valid_path or standards.is_path_component(answer):
+                do = False
+            else:
+                disp("The {} of {} must be a valid component of a path.".format(attribute, name))
+        return answer
     
     def report_directory(self):
         try:
@@ -92,6 +108,10 @@ class Experiment(object):
             with open(error_file, "a") as f:
                 f.write("{}\n{}".format(message, e.message))
 
+    def run_next(self, args=None):
+        self.change_status()
+        self.run(args)
+
 
 class OptmavenExperiment(Experiment):
     def __init__(self):
@@ -113,6 +133,7 @@ class OptmavenExperiment(Experiment):
             self.clash_cutoff = standards.DefaultClashCutoff
             self.walltime = standards.DefaultWalltime
             self.batch_size = standards.DefaultBatchSize
+            self.number_of_designs = standards.DefaultNumberOfDesigns
         # Define the antigen and epitope.
         entire_input_model = self.get_entire_input_model()
         antigen_input_chains = self.select_antigen_input_chains(entire_input_model)
@@ -120,28 +141,43 @@ class OptmavenExperiment(Experiment):
         self.antigen_chain_ids = [chain.get_id() for chain in antigen_input_chains]
         self.select_epitope_residues(antigen_input_chains)
         self.write_antigen_input_residues(entire_input_model)#, antigen_input_residues)
-        self.status = 1
+        self.status = 0
         self.report_directory()
         self.save_and_submit()
 
-    def run(self, args):
-        tasks = {
-            1: self.relax_antigen,
-            2: self.one_maps_energy
-        }
+    def change_status(self, new_status=None):
+        if new_status is None:
+            new_status = self.status + 1
+        self.status = new_status
+        print "STATUS", self.status # FIXME
+        self.save()
+
+    def run(self, args=None):
+        tasks = [
+            self.relax_antigen,
+            self.maps_energy_batch,
+            self.collect_maps_energies,
+            self.select_parts_batch,
+            self.select_antibodies,
+            self.relax_complexes_batch,
+            self.finish
+        ]
         try:
             try:
                 task = tasks[self.status]
-            except KeyError:
+            except (IndexError, TypeError):
                 raise ValueError("Bad Experiment status: {}".format(self.status))
             else:
                 task(args)
         except Exception as e:
             tb = traceback.format_exc()
             self.document_error(tb)
-        else:
-            self.status += 1
-            self.save_and_submit()
+
+    def finish(self, args):
+        self.report_file = os.path.join(self.directory, "report.txt")
+        with open(self.report_file, "w") as f:
+            pass
+            #FIXME
 
     def relax_antigen(self, args):
         antigen_molecule = molecules.Molecule(self.antigen_input_name, self.antigen_input_file, self)
@@ -163,18 +199,9 @@ class OptmavenExperiment(Experiment):
         epi_coords = epitope_atoms[coord_dims].view(dtype=np.float).reshape(-1, coord_n)
         all_center = np.mean(all_coords, axis=0)
         epi_center = np.mean(epi_coords, axis=0)
-        if np.allclose(all_center, epi_center, atol=0.001):
-            # If the antigen and epitope centers are practically concurrent, then just use an null rotation.
-            rot_matrix = np.eye(coord_n)
-        else:
-            epi_vector = epi_center - all_center
-            # Make a rotation matrix that rotates the epitope vector to the negative z axis.
-            neg_z_axis = np.array([0., 0., -1.])
-            rot_axis = np.cross(epi_vector, neg_z_axis)
-            if np.allclose(rot_axis, 0, atol=0.001):
-                rot_matrix = np.eye(coord_n)
-            else:
-                rot_matrix = standards.rotate_vi_to_vf(epi_vector, neg_z_axis)
+        epi_vector = epi_center - all_center
+        # Make a rotation matrix that rotates the epitope vector to the negative z axis.
+        rot_matrix = standards.rotate_vi_to_vf(epi_vector, -standards.zAxis)
         self.epitope_zmin_file = os.path.join(self.structure_directory, "antigen_epitope_down.pdb")
         antigen_molecule.rotate(rot_matrix, self.epitope_zmin_file, in_place=True)
         # Rotate the antigen so that its z rotation angle is 0.
@@ -186,8 +213,8 @@ class OptmavenExperiment(Experiment):
         self.positions_file = os.path.join(self.temp, "positions.dat")
         with klaus.PositionAntigen(self) as x:
             pass
-        self.status += 1
-        self.all_maps_energies(None)
+        self.change_status()
+        self.maps_energies_all(None)
 
     def get_maps_part_energy_directory(self, part):
         return os.path.join(self.maps_energies_directory, part)
@@ -196,33 +223,171 @@ class OptmavenExperiment(Experiment):
         return os.path.join(self.get_maps_part_energy_directory(part), "{}_energies_temp.dat".format(part))
     
     def get_maps_part_energy_file_finished(self, part):
-        return os.path.join(self.maps_energies_directory, "{}_energies.dat".format(part))
+        return os.path.join(self.get_maps_part_energy_directory(part), "{}_energies.dat".format(part))
 
-    def all_maps_energies(self, args):
+    def maps_energies_all(self, args):
         """ Calculate the interacton energy between the antigen and all MAPs parts. """
         self.maps_energies_directory = os.path.join(self.temp, "maps_energies")
         if not os.path.isdir(self.maps_energies_directory):
             os.mkdir(self.maps_energies_directory)
-        # Check which parts have not finished.
-        unfinished_parts = [part for part in maps.parts if not os.path.isfile(self.get_maps_part_energy_file_finished(part))]
-        unstarted_parts = [part for part in maps.parts if not os.path.isfile(self.get_maps_part_energy_file_temp(part))]
-        #FIXME: better way to tell which parts are unstarted.
-        collected_parts = list()
-        for part in unstarted_parts:
-            collected_parts.append(part)
-            if len(collected_parts) == self.batch_size:
-                self.submit(collected_parts)
-                collected_parts = list()
-        
-    def one_maps_energy(self, args):
-        """ Calculate the interacton energy between the antigen and one MAPs part. """
+        self.save()
+        jobs = {part: self.get_maps_part_energy_file_finished(part) for part in maps.parts}
+        self.submit(jobs=jobs)
+
+    def maps_energy_batch(self, args):
+        """ Calculate the interacton energy between the antigen and a batch of MAPs parts. """
+        parts_file = args[2]
+        with open(parts_file) as f:
+            parts = f.read().split()
+        for part in parts:
+            self.maps_energy_single(part)
+   
+    def maps_energy_single(self, part):
+        with klaus.MapsEnergies(self, part, self.get_maps_part_energy_directory(part), self.get_maps_part_energy_file_temp(part), self.get_maps_part_energy_file_finished(part)) as energies:
+            pass
+    
+    def collect_maps_energies(self, args):
+        maps_energies = defaultdict(list)
+        for part in maps.parts:
+            _file = self.get_maps_part_energy_file_finished(part)
+            with open(_file) as f:
+                for line in f:
+                    try:
+                        zAngle, x, y, z, energy = map(float, line.split())
+                    except ValueError:
+                        raise ValueError("Cannot parse line in MAPs energy file {}:\n{}".format(_file, line))
+                    position = (zAngle, x, y, z)
+                    maps_energies[position].append([maps.part_category[part], maps.part_number[part], energy])
+        self.change_status()
+        #FIXME: remove maps energies directory
+        #FIXME: remove the writing of this pickle file.
+        self.select_parts_all(maps_energies)
+
+    def get_select_parts_directory(self, index):
+        return os.path.join(self.select_parts_directory, "position_{}".format(index))
+
+    def get_select_parts_energy_file(self, index):
+        return os.path.join(self.get_select_parts_directory(index), "energies.pickle")
+
+    def get_select_parts_file_temp(self, index):
+        return os.path.join(self.get_select_parts_directory(index), "parts_temp.dat")
+
+    def get_select_parts_file_finished(self, index):
+        return os.path.join(self.get_select_parts_directory(index), "parts.dat")
+
+    def select_parts_all(self, maps_energies):
+        self.select_parts_directory = os.path.join(self.temp, "select_parts")
         try:
-            part = args[2]
-        except IndexError:
-            #self.all_maps_energies(args)
-        else:
-            print "CALCULATING ENERGIES FOR", part
+            os.mkdir(self.select_parts_directory)
+        except OSError:
+            pass
+        self.positions = dict(enumerate(maps_energies))
+        # Pickle the MAPs energies so that the select parts scripts can use them.
+        for index, position in self.positions.iteritems():
+            position_energies = maps_energies[position]
+            try:
+                os.mkdir(self.get_select_parts_directory(index))
+            except OSError:
+                pass
+            with open(self.get_select_parts_energy_file(index), "w") as f:
+                pkl.dump(position_energies, f)
+        self.save()
+        jobs = {index: self.get_select_parts_file_finished(index) for index in self.positions}
+        self.submit(jobs=jobs)
+
+    def select_parts_batch(self, args):
+        index_file = args[2]
+        with open(index_file) as f:
+            indexes = f.read().split()
+        for index in indexes:
+            self.select_parts_single(index)
         
+    def select_parts_single(self, index, solution_cuts=None):
+        index = int(index)
+        position = self.positions[index]
+        # Load the integer cuts
+        clash_cuts = maps.get_integer_cuts()
+        if solution_cuts is None:
+            solution_cuts = list()
+        with open(self.get_select_parts_energy_file(index)) as f:
+            position_energies = pkl.load(f)
+        # Load the MAPS energies
+        # Using cplex to get the optimal solutions. 
+        # The solution is a dictionary and the key and values are partname and number respectively
+        # The energy is the total interaction energy between the selected parts and antigen
+        #solution, energy = OptMAVEn_selector(energies, struCuts, solutionCuts)
+        solution, energy = maps.select_parts(position_energies, clash_cuts, solution_cuts)
+        # Store the selected parts in a list
+        selected_parts = [maps.join(category, part) for category, part in solution.items()]
+        antibody = molecules.ProtoAntibody(selected_parts, position, energy)
+        with open(self.get_select_parts_file_finished(index), "w") as f:
+            pkl.dump(antibody, f)
+
+    def select_antibodies(self, args):
+        # Cluster the antibodies based on their coordinates.
+        antibodies = {chain: list() for chain in maps.light_chains}
+        for design in map(self.get_select_parts_file_finished, self.positions):
+            with open(design) as f:
+                antibody = pkl.load(f)
+            antibodies[antibody.light_chain].append(antibody)
+        #clusters = {chain: [sorted(cluster) for cluster in kmeans.optimal_kmeans(chain_abs)] for chain, chain_abs in antibodies.iteritems()}
+        clusters = {"L": [sorted(cluster) for cluster in kmeans.optimal_kmeans(antibodies["L"])]}
+        print "CLUSTERS", clusters
+        # Select the best antibodies from the clusters.
+        best_antibodies = list()
+        cluster_depth = 0
+        select_number = min(self.number_of_designs, len(self.positions))
+        while len(best_antibodies) < select_number:
+            # Collect the best unused design from each cluster that has not been exhausted.
+            cluster_heads = list()
+            print "COLLECTING"
+            for light_chain, light_chain_clusters in clusters.iteritems():
+                print "LC", light_chain
+                for cluster in light_chain_clusters:
+                    print "CLUSTER", cluster
+                    if len(cluster) > cluster_depth:
+                        print "AB", cluster[cluster_depth]
+                        cluster_heads.append(cluster[cluster_depth])
+            # Add these designs to the list of best designs, in order of increasing energy.
+            cluster_heads.sort()
+            print "HEADS", cluster_heads
+            while len(best_antibodies) < select_number and len(cluster_heads) > 0:
+                best_antibodies.append(cluster_heads.pop(0))
+        print "BEST", best_antibodies
+        self.unrelaxed_complex_directory = os.path.join(self.get_temp(), "unrelaxed_complexes")
+        try:
+            os.mkdir(self.unrelaxed_complex_directory)
+        except OSError:
+            pass
+        self.unrelaxed_complex_files = [os.path.join(self.unrelaxed_complex_directory, "complex_{}.pdb".format(i)) for i, antibody in enumerate(best_antibodies)]
+        [ab.to_molecule("unrelaxed", _file, self) for ab, _file in zip(best_antibodies, self.unrelaxed_complex_files)]
+        self.change_status() 
+        self.relax_complexes_all()
+
+    def relax_complexes_all(self):
+        print "RELAX COMPLEXES ALL" #FIXME
+        self.relaxed_complex_directory = os.path.join(self.directory, "antigen-antibody-complexes")
+        try:
+            os.mkdir(self.relaxed_complex_directory)
+        except OSError:
+            pass
+        self.relaxed_complex_files = [os.path.join(self.relaxed_complex_directory, "complex_{}.pdb".format(i)) for i, _file in enumerate(self.unrelaxed_complex_files)]
+        jobs = {index: _file for index, _file in enumerate(self.relaxed_complex_files)}
+        print "PRESAVED" #FIXME 
+        self.save()
+        print "SAVED" #FIXME
+        self.submit(jobs=jobs)
+
+    def relax_complexes_batch(self, args):
+        index_file = args[2]
+        with open(index_file) as f:
+            indexes = map(int, f.read().split())
+        for index in indexes:
+            self.relax_complex_single(index)
+
+    def relax_complex_single(self, index):
+        _complex = molecules.Molecule("unrelaxed", self.unrelaxed_complex_files[index], self)
+        _complex.relax(relaxed_file=self.relaxed_complex_files[index], in_place=False)
         
     def get_entire_input_model(self):
         # Select the antigen file.
@@ -242,8 +407,15 @@ class OptmavenExperiment(Experiment):
         # Select the antigen chains.
         chains = Selection.unfold_entities(entire_input_model, "C")
         chain_ids = [chain.get_id() for chain in chains]
-        return user_input.select_from_list("Please select the antigen chains: ", chains, 1, None, names=chain_ids)
-    
+        do = True
+        while do:
+            selected_chains = user_input.select_from_list("Please select the antigen chains: ", chains, 1, None, names=chain_ids)
+            if any(chain in standards.MapsChains for chain in selected_chains):
+                disp("The following are not valid names for antigen chains: {}".format(", ".join(standards.MapsChains)))
+            else:
+                do = False
+        return selected_chains
+
     def select_epitope_residues(self, chains):
         self.epitope_residue_ids = dict()
         for chain in chains:
@@ -268,34 +440,6 @@ class OptmavenExperiment(Experiment):
             raise OSError("Missing molecule files: {}".format(", ".join(missing)))
         return molecules_list
 
-"""
-class ExperimentResidue(object):
-    def __init__(self, biopython_residue):
-        if not isinstance(biopython_residue, Residue.Residue):
-            raise TypeError("Expected Bio.PDB.Residue.Residue, got {}".format(type(biopython_residue)))
-        self.hetero, self.number, self.insertion = biopython_residue.get_id()
-        self.type = biopython_residue.get_resname()
-        self.chain_id = biopython_residue.get_parent().get_id()
-        self.model_id = biopython_residue.get_parent().get_parent().get_id()
-
-    def get_id(self):
-        return (self.model_id, self.chain_id, self.number, self.insertion, self.type, self.hetero)
-
-    def __str__(self):
-        return "{}{}".format(self.number, self.insertion.strip())
-    
-    def __repr__(self):
-        return str(self)
-
-
-class SelectedResidueSelect(Select):
-    def __init__(self, selected_residues):
-        Select.__init__(self)
-        self.selected_residues = {residue.get_id() for residue in selected_residues}
-
-    def accept_residue(self, residue):
-        return int(ExperimentResidue(residue).get_id() in self.selected_residues)
-"""
 
 if __name__ == "__main__":
     if len(sys.argv) < 2:

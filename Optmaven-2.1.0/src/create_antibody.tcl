@@ -2,14 +2,13 @@
 # The following arguments are required:
 # -e: the name of this script
 # -m: HV, HCDR3, HJ, K/L V, K/L CDR3, K/L J
-# -args: 0: heavyChain lightChain name/of/output/coords.pdb
+# -args: 0: name/of/output/coords.pdb
 
 # The topotools package is required.
 package require topotools
 
 # Load the VMD functions.
-set InstallFolder "/gpfs/work/m/mfa5147/OptMAVEn_Zika/OptMAVEn2.0"
-source $InstallFolder/modules/VMD_FUNCTIONS.tcl
+source vmd_functions.tcl
 
 # Make sure the right number of antibody parts have been loaded.
 set numParts 6
@@ -36,7 +35,7 @@ set outCoords [lindex $argv 0]
 # Make sure the first three parts have the same chain.
 set heavyChain [lindex [[atomselect 0 "all"] get chain] 0]
 for {set i 0} {$i < 3} {incr i} {
-    if {[lindex [[atomselect $i "all"] get chain] 0] != heavyChain} {
+    if {[lindex [[atomselect $i "all"] get chain] 0] != $heavyChain} {
         puts "The heavy chain parts must have the same chain."
         exit 1
     }
@@ -45,7 +44,7 @@ for {set i 0} {$i < 3} {incr i} {
 # Make sure the second three parts have the same chain. 
 set lightChain [lindex [[atomselect 3 "all"] get chain] 0]
 for {set i 3} {$i < 6} {incr i} {
-    if {[lindex [[atomselect $i "all"] get chain] 0] != lightChain} {
+    if {[lindex [[atomselect $i "all"] get chain] 0] != $lightChain} {
         puts "The light chain parts must have the same chain."
         exit 1
     }
@@ -54,12 +53,13 @@ for {set i 3} {$i < 6} {incr i} {
 # Merge the antibody parts.
 set merged [::TopoTools::mergemols [range 0 [expr $numParts - 1] 1]]
 set mergedID $numParts
-set mergedHeavy [atomselect $mergedID "chain $heavyChain"]
-set mergedLight [atomselect $mergedID "chain $lightChain"]
 
+#FIXME
 # Renumber the residues from 1 for the heavy and light chains.
-restartResidues $mergedHeavy
-restartResidues $mergedLight
+#set mergedHeavy [atomselect $mergedID "chain $heavyChain"]
+#set mergedLight [atomselect $mergedID "chain $lightChain"]
+#restartResidues $mergedHeavy
+#restartResidues $mergedLight
 
 # Write a coordinate file of the merged parts.
 animate write pdb $outCoords $mergedID

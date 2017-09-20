@@ -3,10 +3,10 @@
 import os
 import re
 
-import EXPERIMENT
-import MOLECULES
-import STANDARDS
-import USER_INPUT
+import experiment
+import molecules
+import standards
+import user_input
 
 def residue_compare(residue_code_1, residue_code_2):
     pattern = re.compile("([0-9]+)([A-Z]?)")
