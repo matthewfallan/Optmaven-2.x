@@ -41,7 +41,6 @@ class PbsBatchSubmitter(object):
 
     def submit(self, program, args, jobs):
         # jobs is a dictionary where the keys are the arguments that must be passed to experiment.py and the values are the files that are generated when the jobs have completed.
-        print "SUBMITTER SUBITTING" #FIXME
         self.program = program
         self.args = args
         self.jobs.update(jobs)
@@ -79,10 +78,8 @@ class PbsBatchSubmitter(object):
             os.close(handle)
             self.garbage.append(self.callback_file)
             self.save()
-            print "RUNNING JOB ARRAY" #FIXME
             submit(self.callback_file, command, self.experiment.walltime, options={"-W": "depend=afteranyarray:{}".format(job_id)})
         else:
-            print "ALL FINISHED"
             self.collect_garbage(True)
             self.experiment.run_next()
 

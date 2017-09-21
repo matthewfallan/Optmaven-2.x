@@ -4,6 +4,7 @@ from collections import defaultdict, OrderedDict
 import cPickle as pkl
 #import multiprocessing
 import os
+import shutil
 import sys
 import tempfile
 import time
@@ -14,6 +15,7 @@ from Bio.PDB.PDBIO import Select
 from Bio import SeqIO
 import numpy as np
 
+import charmm
 from console import clear, disp
 import klaus
 import kmeans
@@ -150,7 +152,6 @@ class OptmavenExperiment(Experiment):
         if new_status is None:
             new_status = self.status + 1
         self.status = new_status
-        print "STATUS", self.status # FIXME
         self.save()
 
     def run(self, args=None):
@@ -161,7 +162,8 @@ class OptmavenExperiment(Experiment):
             self.select_parts_batch,
             self.select_antibodies,
             self.relax_complexes_batch,
-            self.finish
+            self.create_report,
+            self.completed
         ]
         try:
             try:
@@ -174,15 +176,15 @@ class OptmavenExperiment(Experiment):
             tb = traceback.format_exc()
             self.document_error(tb)
 
-    def finish(self, args):
+    def create_report(self, args):
         report_info = list()
         report_fields = [
-            ("Total positions", self.positions),
+            ("Total positions", len(self.positions)),
             ("Selected designs", self.select_number)
         ]
         report_info.extend([info_format(field, value) for field, value in report_fields])
         for index in range(self.select_number):
-            with open(self.results_pickle_file) as f:
+            with open(self.results_pickle_file(index)) as f:
                 result = pkl.load(f)
             result_info = result.output()
             report_info.append(result_info)
@@ -190,6 +192,10 @@ class OptmavenExperiment(Experiment):
         self.report_file = os.path.join(self.directory, "report.txt")
         with open(self.report_file, "w") as f:
             f.write(report_text)
+        self.change_status()
+
+    def completed(self, args):
+        disp("{} has finished running. Please view the results in {}".format(self.name, self.directory))
 
     def relax_antigen(self, args):
         antigen_molecule = molecules.Molecule(self.antigen_input_name, self.antigen_input_file, self)
@@ -414,14 +420,16 @@ class OptmavenExperiment(Experiment):
         # Calculate interaction energy before relaxation.
         antigen, antibody = _complex.disassemble_into_chains([_complex.antigen_chains, _complex.antibody_chains])
         garbage.extend([antigen.file, antibody.file])
-        unrelaxed_energy = charmm.InteractionEnergy(self, [antigen, antibody])
+        with charmm.InteractionEnergy(self, [antigen, antibody]) as e:
+            unrelaxed_energy = e.energy
         # Relax the complex.
         _complex.relax(relaxed_file=self.relaxed_complex_file(index), in_place=False)
         # Calculate interaction energy after relaxation.
         antigen, antibody = _complex.disassemble_into_chains([_complex.antigen_chains, _complex.antibody_chains])
         garbage.extend([antigen.file, antibody.file])
-        relaxed_energy = charmm.InteractionEnergy(self, [antigen, antibody])
-        result = OptmavenResult(self.result_name(index), self.results_directory(index), _complex, self.highest_ranked_antibodies[index], unrelaxed_energy, relaxed_energy) 
+        with charmm.InteractionEnergy(self, [antigen, antibody]) as e:
+            relaxed_energy = e.energy
+        result = OptmavenResult(self.result_name(index), self.results_directory(index), _complex, self.highest_ranked_designs[index], unrelaxed_energy, relaxed_energy) 
         with open(self.results_pickle_file(index), "w") as f:
             pkl.dump(result, f)
         
@@ -479,7 +487,7 @@ class OptmavenExperiment(Experiment):
 
 class OptmavenResult(object):
     """ Stores information about one result from an Optmaven experiment. """
-    def __init__(self, name, directory, molecule, maps_parts, position, unrelaxed_energy, relaxed_energy):
+    def __init__(self, name, directory, molecule, proto_antibody, unrelaxed_energy, relaxed_energy):
         self.name = name
         self.directory = directory
         self.molecule = molecule
@@ -487,13 +495,13 @@ class OptmavenResult(object):
         self.unrelaxed_energy = unrelaxed_energy
         self.relaxed_energy = relaxed_energy
 
-    def output(self, directory):
+    def output(self):
         try:
             os.mkdir(self.directory)
         except OSError:
             pass
         info = list()
-        info.append("Name", self.name)
+        info.append(info_format("Name", self.name))
         # Write the molecule.
         self.molecule_file = os.path.join(self.directory, "{}.pdb".format(self.name))
         shutil.copyfile(self.molecule.file, self.molecule_file)
@@ -505,9 +513,9 @@ class OptmavenResult(object):
         with open(self.fasta_file) as f:
             info.append(f.read())
         info.append("MAPs parts")
-        [info.append(info_format(field, value)) for field, value in self.proto_antibody.get_namesake_parts()]
+        [info.append(info_format(field, value)) for field, value in self.proto_antibody.get_namesake_parts().items()]
         info.append("Position")
-        [info.append(info_format(field, value)) for field, value in self.proto_antibody.get_labeled_position()]
+        [info.append(info_format(field, value)) for field, value in self.proto_antibody.get_labeled_position().items()]
         info.append(info_format("Unrelaxed energy", self.unrelaxed_energy))
         info.append(info_format("Relaxed energy", self.relaxed_energy))
         return "\n".join(info)

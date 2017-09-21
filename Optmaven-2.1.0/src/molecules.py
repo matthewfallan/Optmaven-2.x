@@ -110,7 +110,7 @@ class Molecule(object):
         if structure is None:
             structure = self.get_structure()
         if directory is None:
-            directory = self.directory
+            directory = os.path.dirname(self.file)
         if prefix is None:
             prefix, suffix = os.path.splitext(os.path.basename(self.file))
         models = structure.get_list()
