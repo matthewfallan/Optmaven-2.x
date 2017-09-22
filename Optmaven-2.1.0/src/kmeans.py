@@ -27,7 +27,6 @@ def update_clusters(data, centroids):
     for item in data:
         nearest_cluster_index = np.argmin([np.linalg.norm(to_array(item) - centroid) for centroid in centroids])
         clusters[nearest_cluster_index].append(item)
-
     # If any cluster is empty then assign one point
     # from data set randomly so as to not have empty
     # clusters and 0 means.
@@ -66,19 +65,14 @@ def to_array(iterable):
 
 
 def optimal_kmeans(data, threshold=standards.DefaultKmeansOptKThreshold, tolerance=standards.DefaultKmeansTolerance, max_iterations=standards.DefaultKmeansMaxIterations):
-    print "KMEANS"
     k = 1
-    clusters_opt = None
-    mse_1 = None
-    mse_k_lowest = None
+    clusters_opt, mse_1 = kmeans(data, k, tolerance, max_iterations)
+    mse_k_lowest = mse_1
+    k += 1
     while k <= len(data) and (mse_k_lowest is None or mse_k_lowest / mse_1 > threshold):
         clusters, mse = kmeans(data, k, tolerance, max_iterations)
-        print k, mse
-        if k == 1:
-            mse_1 = mse
-        if mse_k_lowest is None or mse < mse_k_lowest:
+        if mse < mse_k_lowest:
             mse_k_lowest = mse
             clusters_opt = clusters
         k += 1
-    print "FINISHED", len(clusters_opt)
     return clusters_opt

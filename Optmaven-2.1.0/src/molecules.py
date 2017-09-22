@@ -56,7 +56,11 @@ class Molecule(object):
             for chain in Selection.unfold_entities(models[0], "C"):
                 exclude = self.excluded_residue_ids.get(chain.get_id())
                 if exclude is not None:
-                    [chain.detach_child(res_id) for res_id in exclude]
+                    for res_id in exclude:
+                        try:
+                            chain.detach_child(res_id)
+                        except KeyError:
+                            pass
         return structure
 
     def get_model(self):
@@ -102,8 +106,7 @@ class Molecule(object):
         with charmm.Relaxation(self.experiment, [self], relaxed_file) as relax:
             pass
         if in_place:
-            if relaxed_file != self.file:
-                self.file = relaxed_file
+            self.file = relaxed_file
 
     def disassemble_into_chains(self, chain_groups=None, prefix=None, structure=None, directory=None):
         """ Disassemble a molecule into its chains. Each chain becomes a Molecule. """
@@ -212,6 +215,7 @@ class Molecule(object):
             self.file = file_name
 
     def rotate(self, rot_matrix, file_name=None, in_place=False, center=True):
+        original_file = self.file
         if file_name is None:
             if in_place is False:
                 raise ValueError("A rotation file must be given if the rotation is to not be in place.")
@@ -220,7 +224,7 @@ class Molecule(object):
             # First get the original center.
             original_center = self.get_center()
             # Move the molecule to the origin before the rotation.
-            self.translate(-original_center, file_name, in_place)
+            self.translate(-original_center, file_name, in_place=True)
         rot_coords = np.dot(self.get_coords(), rot_matrix)
         atoms = self.get_atoms()
         # Replace all of the atomic coordinates.
@@ -229,11 +233,11 @@ class Molecule(object):
         # Write the rotated coordinates.
         structure = atom.get_parent().get_parent().get_parent().get_parent()
         self.write_pdb(structure, file_name)
-        if in_place:
-            self.file = file_name
         if center:
-            # Move the molecule back to its original position.
-            self.translate(original_center, file_name, in_place)
+            # Move the molecule center back to its original position.
+            self.translate(original_center, file_name, in_place=True)
+        if not in_place:
+            self.file = original_file
 
     def get_atoms(self):
         structure = self.get_structure()
@@ -306,6 +310,9 @@ class ProtoAntibody(object):
                     self.light_chain = chain
                 elif self.light_chain != chain:
                     raise ValueError("An antibody may not contain both lambda and kappa chains.")
+            # Ensure that the part exists.
+            maps.join(cdr, number)
+            # Store the part.
             self.parts[cdr] = str(number)
         # Ensure that all CDRs are present (with no extras).
         all_cdrs = sorted(maps.get_cdr_names(self.light_chain))
@@ -370,7 +377,7 @@ class ProtoAntibody(object):
     def to_molecule(self, name, _file, experiment):
         # First create the antibody heavy and light chains.
         garbage = list()
-        directory = tempfile.mkdtemp(dir=experiment.get_temp(), prefix="to_mol")
+        directory = tempfile.mkdtemp(dir=experiment.get_temp(), prefix="to_mol_")
         ab_name = "ab_temp"
         ab_file = os.path.join(directory, "ab_temp.pdb")
         garbage.append(ab_file)
@@ -388,18 +395,12 @@ class ProtoAntibody(object):
         zAngle = self.position[standards.PositionOrder.index(standards.zAngleLabel)]
         rot_matrix = standards.rotate_axis_angle(standards.zAxis, zAngle)
         antigen = Molecule(ag_name, experiment.epitope_zmin_file, experiment)
-        antigen.rotate(rot_matrix, file_name=ag_file, in_place=False)
+        antigen.rotate(rot_matrix, file_name=ag_file, in_place=True, center=False)
+        antigen.translate([x, y, z], file_name=ag_file, in_place=True)
         # Merge the antigen and antibody and save the structure as a PDB..
         _complex = merge([antibody, antigen], return_molecule=True, merged_name=name, merged_file=_file, write_pdb=True)
-        for item in garbage:
-            try:
-                os.remove(item)
-            except OSError:
-                pass
-        try:
-            os.rmdir(directory)
-        except OSError:
-            pass
+        # Remove the directory in which the complex was assembled.
+        experiment.safe_rmtree(directory)
         # Return the merged antibody-antigen complex.
         return _complex
 

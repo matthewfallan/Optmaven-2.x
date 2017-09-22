@@ -15,7 +15,6 @@ class PbsBatchSubmitter(object):
         self.file = os.path.join(self.directory, "pbs.pickle")
         self.jobs_file_prefix = os.path.join(self.directory, standards.PbsJobFilePrefix)
         self.jobs = dict()
-        self.garbage = list()
 
     def save(self):
         with open(self.file, "w") as f:
@@ -27,17 +26,8 @@ class PbsBatchSubmitter(object):
     def get_jobs_files(self):
         return map(self.get_jobs_file, range(1, self.array + 1))
 
-    def collect_garbage(self, remove_directory=False):
-        for _file in self.garbage:
-            try:
-                os.remove(_file)
-            except OSError:
-                pass
-        if remove_directory:
-            try:
-                os.rmdir(self.directory)
-            except OSError:
-                pass
+    def collect_garbage(self):
+        self.experiment.safe_rmtree(self.directory)
 
     def submit(self, program, args, jobs):
         # jobs is a dictionary where the keys are the arguments that must be passed to experiment.py and the values are the files that are generated when the jobs have completed.
@@ -46,6 +36,10 @@ class PbsBatchSubmitter(object):
         self.jobs.update(jobs)
         # Remove all previous jobs files before submitting new jobs.
         self.collect_garbage()
+        try:
+            os.mkdir(self.directory)
+        except OSError:
+            pass
         unfinished = [job for job, _file in self.jobs.iteritems() if not os.path.isfile(_file)]
         if len(unfinished) > 0:
             self.array = 0
@@ -57,7 +51,6 @@ class PbsBatchSubmitter(object):
                     jobs_file = self.get_jobs_file(self.array)
                     with open(jobs_file, "w") as f:
                         f.write(" ".join(map(str, collection)))
-                    self.garbage.append(jobs_file)
                     collection = list()
             command = "{} {} {}{}".format(program, " ".join(map(str, args)), self.jobs_file_prefix, standards.PbsArrayId)
             if command.startswith("rm"):
@@ -65,7 +58,6 @@ class PbsBatchSubmitter(object):
             handle, self.script_file = tempfile.mkstemp(dir=self.directory, prefix="script_", suffix=".sh")
             os.close(handle)
             write_script(self.script_file, command, self.experiment.walltime, self.array)
-            self.garbage.append(self.script_file)
             call = [standards.PbsQsub, self.script_file]
             p = subprocess.Popen(call, stdout=subprocess.PIPE)
             stdout, stderr = p.communicate()
@@ -76,11 +68,10 @@ class PbsBatchSubmitter(object):
             command = "{} {} {}".format(standards.PythonCommand, os.path.realpath(__file__), self.file)
             handle, self.callback_file = tempfile.mkstemp(dir=self.directory, prefix="callback_", suffix=".sh")
             os.close(handle)
-            self.garbage.append(self.callback_file)
             self.save()
             submit(self.callback_file, command, self.experiment.walltime, options={"-W": "depend=afteranyarray:{}".format(job_id)})
         else:
-            self.collect_garbage(True)
+            self.collect_garbage()
             self.experiment.run_next()
 
 

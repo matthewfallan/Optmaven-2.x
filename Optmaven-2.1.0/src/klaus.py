@@ -17,8 +17,6 @@ import molecules
 import charmm
 import standards
 import submitter
-#import performance
-#import maps
 
 # Define how to run VMD.
 vmd_command = standards.VmdCommand
@@ -30,7 +28,6 @@ class VmdProc(object):
         self.experiment = experiment
         self.directory = directory
         self.has_run = False
-        self.garbage = list()
 
     def make_command(self):
         """ Create a VMD command. """
@@ -57,15 +54,8 @@ class VmdProc(object):
             raise RuntimeError("Running VMD with the following command has failed:\n{}".format(command))
 
     def collect_garbage(self):
-        for _file in self.garbage:
-            try:
-                os.remove(_file)
-            except OSError:
-                pass
-        try:
-            os.rmdir(self.directory)
-        except OSError:
-            pass
+        os.remove(self.vmd_functions_file)
+        self.experiment.safe_rmtree(self.directory)
 
     def __enter__(self):
         if self.directory is None:
@@ -73,9 +63,8 @@ class VmdProc(object):
         else:
             os.mkdir(self.directory)
         # Make a link to the VMD functions file.
-        vmd_functions_file = os.path.join(self.directory, os.path.basename(standards.VmdFunctions))
-        os.symlink(standards.VmdFunctions, vmd_functions_file)
-        self.garbage.append(vmd_functions_file)
+        self.vmd_functions_file = os.path.join(self.directory, os.path.basename(standards.VmdFunctions))
+        os.symlink(standards.VmdFunctions, self.vmd_functions_file)
         self.previous_directory = os.getcwd()
         os.chdir(self.directory)
         return self
@@ -100,23 +89,18 @@ class PositionAntigen(VmdProc):
                 (standards.zAngleLabel, self.experiment.grid_zAngle)
             ]:
                 f.write("{}: {}\n".format(dimension, " ".join(map(str, levels))))
-        self.garbage.append(self.grid_file)
         
     def __enter__(self):
         VmdProc.__enter__(self)
         self.write_grid_file()
         self.positions_file = os.path.join(self.directory, "positions.dat")
-        self.garbage.append(self.positions_file)
         self.molecules = [self.experiment.epitope_zmin_file, standards.ScaffoldAntibodies["H"], standards.ScaffoldAntibodies["K"]]
         self.args = [self.grid_file, self.positions_file, self.experiment.clash_cutoff]
         self.script = "position_antigen.tcl"
         self.vmd()
+        shutil.move(self.positions_file, self.experiment.positions_file)
         return self
         
-    def __exit__(self, exc_type, exc_value, traceback):
-        shutil.move(self.positions_file, self.experiment.positions_file)
-        VmdProc.__exit__(self, exc_type, exc_value, traceback)
-
 
 class MergeAntigenMaps(VmdProc):
     """ Calculate the interaction energies between the antigen and a MAPs part in every position. """
@@ -140,16 +124,12 @@ class MergeAntigenMaps(VmdProc):
         self.psf = os.path.join(self.destination_directory, os.path.basename(psf))
         return self
 
-    def __exit__(self, exc_type, exc_value, traceback):
-        VmdProc.__exit__(self, exc_type, exc_value, traceback)
-
 
 class MapsEnergies(VmdProc):
     """ Calculate the interaction energies between the antigen and a MAPs part in every position. """
-    def __init__(self, experiment, maps_part, directory, energy_temp, energy_finished):
-        VmdProc.__init__(self, experiment, directory)
+    def __init__(self, experiment, maps_part, energy_finished):
+        VmdProc.__init__(self, experiment)
         self.part = maps_part
-        self.energy_temp = energy_temp
         self.energy_finished = energy_finished
 
     def __enter__(self):
@@ -157,16 +137,17 @@ class MapsEnergies(VmdProc):
         with MergeAntigenMaps(self.experiment, self.part, self.directory) as merge:
             self.pdb = merge.pdb
             self.psf = merge.psf
-        self.garbage.extend([self.pdb, self.psf])
-        self.args = [self.psf, self.pdb, self.experiment.positions_file, self.energy_temp]
+        energy_temp = os.path.join(self.directory, "energies_temp.dat")
+        self.args = [self.psf, self.pdb, self.experiment.positions_file, energy_temp]
         self.args.extend(self.experiment.parameter_files)
         self.script = "interaction_energies.tcl"
         self.vmd()
+        try:
+            os.makedirs(os.path.dirname(self.energy_finished))
+        except OSError:
+            pass
+        shutil.move(energy_temp, self.energy_finished)
         return self
-
-    def __exit__(self, exc_type, exc_value, traceback):
-        shutil.move(self.energy_temp, self.energy_finished)
-        VmdProc.__exit__(self, exc_type, exc_value, traceback)
 
 
 class CreateAntibody(VmdProc):

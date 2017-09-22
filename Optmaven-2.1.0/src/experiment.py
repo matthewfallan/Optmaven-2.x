@@ -2,7 +2,7 @@
 
 from collections import defaultdict, OrderedDict
 import cPickle as pkl
-#import multiprocessing
+import csv
 import os
 import shutil
 import sys
@@ -47,7 +47,6 @@ class Experiment(object):
         self.file = os.path.join(self.temp, "{}.pickle".format(self.name_contig))
         self.warnings = os.path.join(self.directory, "warnings.txt")
         self.errors = os.path.join(self.directory, "errors.txt")
-        #self.walltime = self.ask("walltime (seconds)", number=True)
         self.structure_directory = os.path.join(self.directory, "structures")
         os.mkdir(self.structure_directory)
 
@@ -65,7 +64,6 @@ class Experiment(object):
             submitter.submit(file_name, command, self.walltime, options=options, queue=queue)
         else:
             s = submitter.PbsBatchSubmitter(self)
-            print "SUBMITTING" #FIXME
             s.submit(standards.PythonCommand, [os.path.realpath(__file__), self.file], jobs)
 
     def save_and_submit(self, queue=True):
@@ -115,6 +113,65 @@ class Experiment(object):
         self.change_status()
         self.run(args)
 
+    def get_molecule(self, name, prompt):
+        do = True
+        while do:
+            molecule_file = user_input.get_file(prompt, standards.PDBDirectory, fetch_pdb=True)
+            try:
+                molecule = molecules.Molecule(name, molecule_file, self, exclude_hetero_ask=True)
+                molecule.get_structure()
+            except Exception as error:
+                disp("There was an error with the PDB import:\n{}".format(error.message))
+            else:
+                do = False
+        return molecule
+
+    def safe_rmtree(self, directory):
+        if standards.is_subdirectory(directory, self.get_temp()):
+            standards.safe_rmtree(directory)
+        else:
+            raise OSError("{} cannot remove directory trees outside of {}".format(self.name, self.get_temp()))
+
+    def purge_temp(self):
+        standards.safe_rmtree(self.temp)
+
+    def completed(self, args):
+        disp("{} has finished running. Please view the results in {}".format(self.name, self.directory))
+
+
+class TransformMoleculeExperiment(Experiment):
+    """ This is a simple Experiment that just translates and rotates a molecule. """
+    def __init__(self):
+        Experiment.__init__(self)
+        self.molecule = self.get_molecule("input", "Please enter the name of the molecule for {}: ".format(self.name))
+        # Get the translation vector.
+        do = True
+        while do:
+            try:
+                translation_vector = np.array(map(float, self.ask("translation vector").split()))
+            except ValueError:
+                pass
+            else:
+                do = False
+        # Get the rotation angle.
+        rotation_degrees = self.ask("rotation angle (in degrees)", number=True)
+        rotation_degrees -= np.floor(rotation_degrees / 360.0)
+        # Get the rotation axis.
+        do = not np.isclose(rotation_degrees, 0.0)
+        rotation_axis = None
+        while do:
+            try:
+                rotation_axis = np.array(map(float, self.ask("rotation axis").split()))
+            except ValueError:
+                pass
+            else:
+                do = False
+        self.output_file = os.path.join(self.structure_directory, self.ask("output molecule", valid_path=True))
+        self.molecule.translate(translation_vector, file_name=self.output_file, in_place=True)
+        if rotation_axis is not None:
+            self.molecule.rotate(standards.rotate_axis_angle(rotation_axis, rotation_degrees, degrees=True), in_place=True)
+        self.completed(None)
+
 
 class OptmavenExperiment(Experiment):
     def __init__(self):
@@ -143,7 +200,7 @@ class OptmavenExperiment(Experiment):
         #antigen_input_residues = [residue for chain in antigen_input_chains for residue in self.select_antigen_input_residues(chain)]
         self.antigen_chain_ids = [chain.get_id() for chain in antigen_input_chains]
         self.select_epitope_residues(antigen_input_chains)
-        self.write_antigen_input_residues(entire_input_model)#, antigen_input_residues)
+        self.write_antigen_input_residues(entire_input_model)
         self.status = 0
         self.report_directory()
         self.save_and_submit()
@@ -177,25 +234,35 @@ class OptmavenExperiment(Experiment):
             self.document_error(tb)
 
     def create_report(self, args):
-        report_info = list()
-        report_fields = [
+        summary = [
+            ("Experiment name", self.name),
+            ("Antigen input file", self.entire_input_file),
+            ("Antigen chains", self.antigen_chain_ids),
+            ("Epitope residues", "; ".join([", ".join(["{}-{}".format(chain, molecules.residue_code(residue)) for residue in residues]) for chain, residues in self.epitope_residue_ids.items()])),
             ("Total positions", len(self.positions)),
             ("Selected designs", self.select_number)
         ]
-        report_info.extend([info_format(field, value) for field, value in report_fields])
+        self.summary_report = os.path.join(self.directory, "Summary.txt")
+        with open(self.summary_report, "w") as f:
+            f.write("\n".join(["{}: {}".format(field, value) for field, value in summary]))
+        result_report_info = list()
+        result_report_fields = list()
         for index in range(self.select_number):
             with open(self.results_pickle_file(index)) as f:
                 result = pkl.load(f)
             result_info = result.output()
-            report_info.append(result_info)
-        report_text = "\n".join(report_info)
-        self.report_file = os.path.join(self.directory, "report.txt")
-        with open(self.report_file, "w") as f:
-            f.write(report_text)
+            result_report_info.append(result_info)
+        for result in result_report_info:
+            for field in result:
+                if field not in result_report_fields:
+                    result_report_fields.append(field)
+        self.result_report = os.path.join(self.directory, "Results.csv")
+        with open(self.result_report, "w") as f:
+            writer = csv.DictWriter(f, fieldnames=result_report_fields)
+            writer.writeheader()
+            for result in result_report_info:
+                writer.writerow(result)
         self.change_status()
-
-    def completed(self, args):
-        disp("{} has finished running. Please view the results in {}".format(self.name, self.directory))
 
     def relax_antigen(self, args):
         antigen_molecule = molecules.Molecule(self.antigen_input_name, self.antigen_input_file, self)
@@ -204,7 +271,7 @@ class OptmavenExperiment(Experiment):
         antigen_molecule.relax(self.antigen_relaxed_file)
         self.minimize_epitope_z_coordinates(antigen_molecule)
 
-    def minimize_epitope_z_coordinates(self, antigen_molecule):
+    def minimize_epitope_z_coordinates(self, antigen_molecule, position_antigen=True):
         # First move the antigen to the origin.
         antigen_molecule.translate_to(in_place=True)
         all_atoms = antigen_molecule.get_atom_array()
@@ -227,7 +294,8 @@ class OptmavenExperiment(Experiment):
         # Translate the antigen along the z axis to center the epitope at the origin.
         antigen_molecule.translate(standards.zAxis * np.linalg.norm(epi_vector),in_place=True)
         # Position the antigen using a grid search.
-        self.position_antigen()
+        if position_antigen:
+            self.position_antigen()
         
     def position_antigen(self):
         self.positions_file = os.path.join(self.temp, "positions.dat")
@@ -236,20 +304,19 @@ class OptmavenExperiment(Experiment):
         self.change_status()
         self.maps_energies_all(None)
 
-    def get_maps_part_energy_directory(self, part):
+    def get_maps_part_energy_directory_finished(self, part):
         return os.path.join(self.maps_energies_directory, part)
 
-    def get_maps_part_energy_file_temp(self, part):
-        return os.path.join(self.get_maps_part_energy_directory(part), "{}_energies_temp.dat".format(part))
-    
     def get_maps_part_energy_file_finished(self, part):
-        return os.path.join(self.get_maps_part_energy_directory(part), "{}_energies.dat".format(part))
+        return os.path.join(self.get_maps_part_energy_directory_finished(part), "{}_energies.dat".format(part))
 
     def maps_energies_all(self, args):
         """ Calculate the interacton energy between the antigen and all MAPs parts. """
         self.maps_energies_directory = os.path.join(self.temp, "maps_energies")
-        if not os.path.isdir(self.maps_energies_directory):
+        try:
             os.mkdir(self.maps_energies_directory)
+        except OSError:
+            pass
         self.save()
         jobs = {part: self.get_maps_part_energy_file_finished(part) for part in maps.parts}
         self.submit(jobs=jobs)
@@ -263,7 +330,7 @@ class OptmavenExperiment(Experiment):
             self.maps_energy_single(part)
    
     def maps_energy_single(self, part):
-        with klaus.MapsEnergies(self, part, self.get_maps_part_energy_directory(part), self.get_maps_part_energy_file_temp(part), self.get_maps_part_energy_file_finished(part)) as energies:
+        with klaus.MapsEnergies(self, part, self.get_maps_part_energy_file_finished(part)) as energies:
             pass
     
     def collect_maps_energies(self, args):
@@ -280,7 +347,6 @@ class OptmavenExperiment(Experiment):
                     maps_energies[position].append([maps.get_part_cdr(part), maps.get_part_number(part), energy])
         self.change_status()
         #FIXME: remove maps energies directory
-        #FIXME: remove the writing of this pickle file.
         self.select_parts_all(maps_energies)
 
     def get_select_parts_directory(self, index):
@@ -289,11 +355,8 @@ class OptmavenExperiment(Experiment):
     def get_select_parts_energy_file(self, index):
         return os.path.join(self.get_select_parts_directory(index), "energies.pickle")
 
-    def get_select_parts_file_temp(self, index):
-        return os.path.join(self.get_select_parts_directory(index), "parts_temp.dat")
-
     def get_select_parts_file_finished(self, index):
-        return os.path.join(self.get_select_parts_directory(index), "parts.dat")
+        return os.path.join(self.get_select_parts_directory(index), "parts.pickle")
 
     def select_parts_all(self, maps_energies):
         self.select_parts_directory = os.path.join(self.temp, "select_parts")
@@ -343,14 +406,12 @@ class OptmavenExperiment(Experiment):
 
     def select_antibodies(self, args):
         # Cluster the antibodies based on their coordinates.
-        antibodies = {chain: list() for chain in maps.light_chains}
+        antibodies = defaultdict(list)
         for design in map(self.get_select_parts_file_finished, self.positions):
             with open(design) as f:
                 antibody = pkl.load(f)
             antibodies[antibody.light_chain].append(antibody)
         clusters = {chain: [sorted(cluster) for cluster in kmeans.optimal_kmeans(chain_abs)] for chain, chain_abs in antibodies.iteritems()}
-        #FIXME
-        #clusters = {"L": [sorted(cluster) for cluster in kmeans.optimal_kmeans(antibodies["L"])]}
         # Select the best antibodies from the clusters.
         self.highest_ranked_designs = list()
         cluster_depth = 0
@@ -423,7 +484,7 @@ class OptmavenExperiment(Experiment):
         with charmm.InteractionEnergy(self, [antigen, antibody]) as e:
             unrelaxed_energy = e.energy
         # Relax the complex.
-        _complex.relax(relaxed_file=self.relaxed_complex_file(index), in_place=False)
+        _complex.relax(relaxed_file=self.relaxed_complex_file(index), in_place=True)
         # Calculate interaction energy after relaxation.
         antigen, antibody = _complex.disassemble_into_chains([_complex.antigen_chains, _complex.antibody_chains])
         garbage.extend([antigen.file, antibody.file])
@@ -438,9 +499,9 @@ class OptmavenExperiment(Experiment):
         self.entire_input_name = "entire_input_file"
         do = True
         while do:
-            entire_input_file = user_input.get_file("Please name the file containing the antigen: ", standards.PDBDirectory, fetch_pdb=True)
+            self.entire_input_file = user_input.get_file("Please name the file containing the antigen: ", standards.PDBDirectory, fetch_pdb=True)
             try:
-                entire_input_model = molecules.Molecule(self.entire_input_name, entire_input_file, self, exclude_hetero_ask=True).get_model()
+                entire_input_model = molecules.Molecule(self.entire_input_name, self.entire_input_file, self, exclude_hetero_ask=True).get_model()
             except Exception as error:
                 disp("There was an error with the PDB import:\n{}".format(error.message))
             else:
@@ -454,7 +515,7 @@ class OptmavenExperiment(Experiment):
         do = True
         while do:
             selected_chains = user_input.select_from_list("Please select the antigen chains: ", chains, 1, None, names=chain_ids)
-            if any(chain in standards.MapsChains for chain in selected_chains):
+            if any(chain.get_id() in standards.MapsChains for chain in selected_chains):
                 disp("The following are not valid names for antigen chains: {}".format(", ".join(standards.MapsChains)))
             else:
                 do = False
@@ -466,7 +527,7 @@ class OptmavenExperiment(Experiment):
             self.epitope_residue_ids[chain.get_id()] = user_input.select_from_list("Please select the epitope residues from chain {}: ".format(chain.get_id()), [residue.get_id() for residue in chain], 1, None, map(molecules.residue_code, chain))
         #return antigen_input_residues
     
-    def write_antigen_input_residues(self, entire_input_structure):#, antigen_input_residues):
+    def write_antigen_input_residues(self, entire_input_structure):
         self.antigen_input_name = "antigen_input_file"
         self.antigen_input_file = os.path.join(self.structure_directory, os.path.basename("antigen_input.pdb"))
         self.antigen_input_molecule = molecules.Molecule(self.antigen_input_name, self.antigen_input_file, self)
@@ -500,25 +561,77 @@ class OptmavenResult(object):
             os.mkdir(self.directory)
         except OSError:
             pass
-        info = list()
-        info.append(info_format("Name", self.name))
+        info = OrderedDict()
+        info["Result"] = self.name
         # Write the molecule.
         self.molecule_file = os.path.join(self.directory, "{}.pdb".format(self.name))
         shutil.copyfile(self.molecule.file, self.molecule_file)
-        info.append(info_format("PDB file", self.molecule_file)) 
+        info["PDB file"] = self.molecule_file
         # Get the sequence and output it as a fasta.
         self.fasta_file = os.path.join(self.directory, "{}.fasta".format(self.name))
-        SeqIO.write(SeqIO.parse(self.molecule_file, "pdb-atom"), self.fasta_file, "fasta")
-        info.append("FASTA sequences")
-        with open(self.fasta_file) as f:
-            info.append(f.read())
-        info.append("MAPs parts")
-        [info.append(info_format(field, value)) for field, value in self.proto_antibody.get_namesake_parts().items()]
-        info.append("Position")
-        [info.append(info_format(field, value)) for field, value in self.proto_antibody.get_labeled_position().items()]
-        info.append(info_format("Unrelaxed energy", self.unrelaxed_energy))
-        info.append(info_format("Relaxed energy", self.relaxed_energy))
-        return "\n".join(info)
+        records = list(SeqIO.parse(self.molecule_file, "pdb-atom"))
+        SeqIO.write(records, self.fasta_file, "fasta")
+        for record in records:
+            chain = record.id.split(":")[1]
+            info[chain] = str(record.seq)
+        for cdr, part in self.proto_antibody.get_namesake_parts().items():
+            info[cdr] = part
+        for dimension, coord in self.proto_antibody.get_labeled_position().items():
+            info[dimension] = coord
+        info["MILP energy (kcal/mol)"] = self.proto_antibody.energy
+        info["Unrelaxed energy (kcal/mol)"] = self.unrelaxed_energy
+        info["Relaxed energy (kcal/mol)"] = self.relaxed_energy
+        return info
+
+
+class CreateAntigenAntibodyComplexExperiment(OptmavenExperiment):
+    def __init__(self):
+        Experiment.__init__(self)
+        entire_input_model = OptmavenExperiment.get_entire_input_model(self)
+        antigen_input_chains = OptmavenExperiment.select_antigen_input_chains(self, entire_input_model)
+        self.antigen_chain_ids = [chain.get_id() for chain in antigen_input_chains]
+        OptmavenExperiment.select_epitope_residues(self, antigen_input_chains)
+        # Position the antigen.
+        do = True
+        while do:
+            try:
+                zAngle, x, y, z = map(float, self.ask("antigen position").split())
+            except ValueError:
+                pass
+            else:
+                do = False
+        position = (zAngle, x, y, z)
+        # Get the chain loci.
+        heavy = user_input.select_one_from_list("Please specify the heavy chain: ", standards.MapsHeavyChains)
+        light = user_input.select_one_from_list("Please specify the light chain: ", standards.MapsLightChains)
+        # Get the MAPs parts.
+        parts = dict()
+        for cdr in standards.MapsCdrs:
+            chain = maps.get_chain(cdr)
+            if chain not in [heavy, light]:
+                continue
+            do = True
+            while do:
+                try:
+                    number = int(self.ask(cdr))
+                    part = maps.join(cdr, number)
+                except ValueError as e:
+                    disp(e.message)
+                else:
+                    do = False
+            parts[cdr] = number
+        energy = None
+        output_file = user_input.get_file("Please specify the output file: ", self.directory, new_file=True)
+        # Write the antigen input file.
+        OptmavenExperiment.write_antigen_input_residues(self, entire_input_model)
+        antigen_molecule = molecules.Molecule(self.antigen_input_name, self.antigen_input_file, self) 
+        # Center and point the epitope downward.
+        OptmavenExperiment.minimize_epitope_z_coordinates(self, antigen_molecule, position_antigen=False)
+        # Assemble the complex.
+        self.proto_antibody = molecules.ProtoAntibody(parts, position, energy)
+        self.proto_antibody.to_molecule("complex", output_file, self)
+        clear()
+        self.report_directory()
 
 
 def info_format(field, value):

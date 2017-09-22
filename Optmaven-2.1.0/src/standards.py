@@ -3,12 +3,22 @@
 import itertools
 import os
 import random
+import shutil
 import string
+import sys
 
+import Bio
 import numpy as np
 
 OptmavenVersion = "2.1.0"
 OptmavenName = "Optmaven-{}".format(OptmavenVersion)
+
+SupportedPythonVersion = "2.7"
+if not sys.version.startswith(SupportedPythonVersion):
+    raise NotImplementedError("{} requires Python {}, got {}".format(OptmavenName, SupportedPythonVersion, sys.version))
+SupportedBiopythonVersion = "1.7"
+if not Bio.__version__.startswith(SupportedBiopythonVersion):
+    raise NotImplementedError("{} requires Biopython {}, got {}".format(OptmavenName, SupportedBiopythonVersion, Bio.__version__))
 
 SourceDirectory = os.path.dirname(os.path.realpath(__file__))
 OptmavenDirectory = os.path.dirname(SourceDirectory)
@@ -43,6 +53,9 @@ MaxListDisplay = 20
 SelectAll = "all"
 SelectNone = "none"
 EscapeCharacter = "\\"
+
+# Path configuration.
+AllowedPathCharacters = string.letters + string.digits + "_."
 
 # Experimental configuration.
 DefaultNumberOfDesigns = 50
@@ -143,6 +156,14 @@ _ROTATION_MATRIX_DIMENSION = len(AtomCoordOrder)
 dim = _ROTATION_MATRIX_DIMENSION
 xAxis, yAxis, zAxis = np.eye(dim)
 
+def degrees_to_radians(degrees):
+    return degrees * np.pi / 180.0
+
+
+def radians_to_degrees(radians):
+    return radians * 180.0 / np.pi
+
+
 def rotate_vi_to_vf(vi, vf):
     """ Compute a rotation matrix to rotate the 3D coordinate vi to vf. """
     if len(vi) != dim or len(vf) != dim:
@@ -164,10 +185,13 @@ def rotate_vi_to_vf(vi, vf):
     return rotate_axis_angle(ax, sin=sin, cos=cos)
 
 
-def rotate_axis_angle(axis, angle=None, sin=None, cos=None):
+def rotate_axis_angle(axis, angle=None, degrees=True, sin=None, cos=None):
     """ Create a rotation matrix to rotate by an angle around an axis. """
     if len(axis) != dim:
         raise ValueError("The rotation matrix function requires 3D coordinates.")
+    if angle is not None:
+        if degrees:
+            angle = degrees_to_radians(angle)
     if sin is None:
         sin = np.sin(angle)
     if cos is None:
@@ -200,5 +224,25 @@ def random_string(length, alphabet=None):
 
 def is_path_component(file_name):
     """ Determine if a file name is a single file without whitespace. """
-    fn = os.path.basename(file_name).split()
-    return len(fn) > 0 and fn[0] == file_name
+    return isinstance(file_name, str) and len([char for char in file_name if char not in AllowedPathCharacters]) == 0
+
+
+def is_subdirectory(directory, parent_directory):
+    directory = os.path.realpath(directory)
+    parent_directory = os.path.realpath(parent_directory)
+    parent_path_old = directory
+    parent_path_new, child = os.path.split(parent_path_old)
+    while parent_path_old != parent_path_new:
+        if parent_path_new == parent_directory:
+            return True
+        parent_path_old = parent_path_new
+        parent_path_new, child = os.path.split(parent_path_old)
+    return False
+
+
+# Safe removal of directory trees.
+def safe_rmtree(directory):
+    if is_subdirectory(directory, ExperimentsDirectory):
+        shutil.rmtree(directory)
+    else:
+        raise OSError("Directory trees may only be removed if they are subdirectories of {}".format(ExperimentsDirectory))

@@ -38,16 +38,20 @@ def get_file(prompt, directory, new_file=False, fetch_pdb=False):
     if new_file:
         do = True
         while do:
-            file_ = os.path.join(directory, get(prompt))
-            if os.path.exists(file_):
-                disp("Cannot create file, path already exists: {}".format(file_))
+            base_file = get(prompt)
+            full_file = os.path.join(directory, base_file)
+            if os.path.exists(full_file):
+                disp("Cannot create file, path already exists: {}".format(full_file))
             else:
-                file_directory = os.path.dirname(file_)
-                if os.path.isdir(file_directory):
-                    do = False
+                if standards.is_path_component(base_file):
+                    file_directory = os.path.dirname(full_file)
+                    if os.path.isdir(file_directory):
+                        do = False
+                    else:
+                        disp("Cannot create file, directory does not exist: {}".format(file_directory))
                 else:
-                    disp("Cannot create file, directory does not exist: {}".format(file_directory))
-        return file_
+                    disp("Only the following characters are permitted in path components: {}".format(standards.AllowedPathCharacters))
+        return full_file
     else:
         if fetch_pdb:
             fetch_pdir = directory

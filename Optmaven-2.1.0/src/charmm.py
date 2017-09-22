@@ -27,7 +27,6 @@ class CharmmProc(object):
                 molecule_resnums[model.get_id()] = model_resnums
             self.resnums.update(molecule_resnums)
         self.has_run = False
-        self.garbage = list()
 
     def begin_script(self):
         self.lines = introduction()
@@ -48,7 +47,6 @@ class CharmmProc(object):
                 file_name = os.path.basename(file_).lower()
                 symlink = os.path.join(self.directory, file_name)
                 os.symlink(file_, symlink)
-                self.garbage.append(symlink)
                 self.lines.append("open read unit 10 form name {} card".format(file_name))
                 # If there is more than one file, indicate that the subsequent files are being appended.
                 append = " append" * int(count > 0)
@@ -74,7 +72,6 @@ class CharmmProc(object):
             self.chain_ids.append(_id)
             segment = make_segment_name(_id)
             base_name = os.path.basename(_file)
-            self.garbage.append(_file)
             self.lines.extend(["! Load Chain {}".format(_id),
                 "open read unit 10 form name {}".format(base_name),
                 "read sequ pdb offi unit 10",
@@ -87,7 +84,6 @@ class CharmmProc(object):
 
     def calculate_energy(self):
         self.energy_file = os.path.join(self.directory, "energy.dat")
-        self.garbage.append(self.energy_file)
         self.lines.extend(["! Calculate the energy.",
             "ener",
             "set tot ?ener",
@@ -101,9 +97,7 @@ class CharmmProc(object):
             "nbon nbxm 5",
             energy_line(self.experiment),
             "mini abnr nstep {} nprint 50 -".format(self.experiment.charmm_iterations),
-            #"tolgrd 0.01 tolenr 0.0001 tolstp 0.00"])
-            "tolgrd 0.1 tolenr 0.1 tolstp 0.00"])
-    #FIXME: change tolgrd and tolenr to 0.01 and 0.0001
+            "tolgrd 0.01 tolenr 0.0001 tolstp 0.00"])
 
     def output_molecules(self):
         self.output_molecule_files = list()
@@ -114,7 +108,6 @@ class CharmmProc(object):
             self.lines.extend(["open write unit 10 name {} card".format(base_name),
                 "write coor sele segi {} end pdb unit 10 card".format(segment),
                 "close unit 10"])
-        self.garbage.extend(self.output_molecule_files)
 
     def end_script(self):
         self.lines.append("STOP")
@@ -127,19 +120,10 @@ class CharmmProc(object):
         with open(self.script_file) as fi, open(self.output_file, "w") as fo:
             proc = subprocess.Popen(standards.CharmmCommand, stdin=fi, stdout=fo)
             proc.wait()
-        self.garbage.extend([self.script_file, self.output_file])
         self.has_run = True
 
     def collect_garbage(self):
-        for _file in self.garbage:
-            try:
-                os.remove(_file)
-            except OSError:
-                pass
-        try:
-            os.rmdir(self.directory)
-        except OSError:
-            pass
+        self.experiment.safe_rmtree(self.directory)
 
     def __enter__(self):
         self.directory = tempfile.mkdtemp(prefix="charmm_", dir=self.experiment.get_temp())

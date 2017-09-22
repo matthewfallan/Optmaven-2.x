@@ -60,9 +60,9 @@ def join(cdr, number, check_new_part=True):
     return part
 
 
-def split(part):
+def split(part, check_part=True):
     """ Split a part X_n into a tuple X, n """
-    if part not in parts:
+    if check_part and part not in parts:
         raise ValueError("Bad MAPs part: {}".format(part))
     return tuple(part.split(sep))
 
