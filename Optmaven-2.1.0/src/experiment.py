@@ -237,8 +237,8 @@ class OptmavenExperiment(Experiment):
         summary = [
             ("Experiment name", self.name),
             ("Antigen input file", self.entire_input_file),
-            ("Antigen chains", self.antigen_chain_ids),
-            ("Epitope residues", "; ".join([", ".join(["{}-{}".format(chain, molecules.residue_code(residue)) for residue in residues]) for chain, residues in self.epitope_residue_ids.items()])),
+            ("Antigen chains", ", ".join(self.antigen_chain_ids)),
+            ("Epitope residues", "; ".join([", ".join(["{}-{}".format(chain, "".join(map(str, resid))) for resid in residues]) for chain, residues in self.epitope_residue_ids.items()])),
             ("Total positions", len(self.positions)),
             ("Selected designs", self.select_number)
         ]
@@ -420,13 +420,16 @@ class OptmavenExperiment(Experiment):
             # Collect the best unused design from each cluster that has not been exhausted.
             cluster_heads = list()
             for light_chain, light_chain_clusters in clusters.iteritems():
-                for cluster in light_chain_clusters:
+                for i, cluster in enumerate(light_chain_clusters):
                     if len(cluster) > cluster_depth:
-                        cluster_heads.append(cluster[cluster_depth])
+                        antibody = cluster[cluster_depth]
+                        antibody.set_cluster(i)
+                        cluster_heads.append(antibody)
             # Add these designs to the list of best designs, in order of increasing energy.
             cluster_heads.sort()
             while len(self.highest_ranked_designs) < self.select_number and len(cluster_heads) > 0:
                 self.highest_ranked_designs.append(cluster_heads.pop(0))
+            cluster_depth += 1
         self.unrelaxed_complex_directory = os.path.join(self.get_temp(), "unrelaxed_complexes")
         try:
             os.mkdir(self.unrelaxed_complex_directory)
@@ -578,6 +581,7 @@ class OptmavenResult(object):
             info[cdr] = part
         for dimension, coord in self.proto_antibody.get_labeled_position().items():
             info[dimension] = coord
+        info["Cluster"] = self.proto_antibody.cluster
         info["MILP energy (kcal/mol)"] = self.proto_antibody.energy
         info["Unrelaxed energy (kcal/mol)"] = self.unrelaxed_energy
         info["Relaxed energy (kcal/mol)"] = self.relaxed_energy

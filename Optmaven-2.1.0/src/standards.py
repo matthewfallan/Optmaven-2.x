@@ -147,8 +147,8 @@ DefaultGapPenalty = 8
 
 # Kmeans standards.
 DefaultKmeansMaxIterations = 1000
-DefaultKmeansTolerance = 0.001
-DefaultKmeansOptKThreshold = 0.5
+DefaultKmeansTolerance = 0.01
+DefaultKmeansOptKThreshold = 0.20
 
 # Rotation matrix routines.
 

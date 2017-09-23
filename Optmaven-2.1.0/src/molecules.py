@@ -302,6 +302,7 @@ class ProtoAntibody(object):
         self.energy = energy
         self.light_chain = None
         self.coords = None
+        self.cluster = None
         for cdr, number in parts.items():
             # Ensure that lambda and kappa chains are not mixed.
             chain = maps.get_chain(cdr)
@@ -337,6 +338,9 @@ class ProtoAntibody(object):
     def get_labeled_position(self):
         return OrderedDict([(label, coord) for label, coord in zip(standards.PositionOrder, self.position)])
     
+    def set_cluster(self, number):
+        self.cluster = int(number)
+
     def get_coords(self):
         if self.coords is None:
             coords = list()
