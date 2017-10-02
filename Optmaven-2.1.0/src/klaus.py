@@ -54,8 +54,16 @@ class VmdProc(object):
             raise RuntimeError("Running VMD with the following command has failed:\n{}".format(command))
 
     def collect_garbage(self):
-        os.remove(self.vmd_functions_file)
+        try:
+            os.remove(self.vmd_functions_file)
+        except OSError:
+            pass
         self.experiment.safe_rmtree(self.directory)
+
+    def write_epitope_file(self):
+        self.epitope_file = os.path.join(self.directory, "epitope.txt")
+        with open(self.epitope_file, "w") as f:
+            f.write(atomselect_residues(self.experiment.epitope_residue_ids))
 
     def __enter__(self):
         if self.directory is None:
@@ -75,7 +83,23 @@ class VmdProc(object):
 
 
 class PositionAntigen(VmdProc):
-    """ Position an antigen using a grid search. """
+    """ Move an antigen to a new position. """
+    def __init__(self, experiment, input_file, output_file, zAngle, x, y, z):
+        VmdProc.__init__(self, experiment)
+        self.molecules = [input_file]
+        self._args = [experiment.antigen_chain_ids[0], output_file, zAngle, x, y, z]
+
+    def __enter__(self):
+        VmdProc.__enter__(self)
+        self.write_epitope_file()
+        self.args = [self.epitope_file] + self._args
+        self.script = "position_antigen.tcl"
+        self.vmd()
+        return self
+
+
+class GridSearch(VmdProc):
+    """ Generate non-clashing antigen positions using a grid search. """
     def __init__(self, experiment):
         VmdProc.__init__(self, experiment)
 
@@ -89,14 +113,15 @@ class PositionAntigen(VmdProc):
                 (standards.zAngleLabel, self.experiment.grid_zAngle)
             ]:
                 f.write("{}: {}\n".format(dimension, " ".join(map(str, levels))))
-        
+
     def __enter__(self):
         VmdProc.__enter__(self)
         self.write_grid_file()
+        self.write_epitope_file()
         self.positions_file = os.path.join(self.directory, "positions.dat")
         self.molecules = [self.experiment.epitope_zmin_file, standards.ScaffoldAntibodies["H"], standards.ScaffoldAntibodies["K"]]
-        self.args = [self.grid_file, self.positions_file, self.experiment.clash_cutoff]
-        self.script = "position_antigen.tcl"
+        self.args = [self.grid_file, self.epitope_file, self.experiment.antigen_chain_ids[0], self.positions_file, self.experiment.clash_cutoff]
+        self.script = "grid_search.tcl"
         self.vmd()
         shutil.move(self.positions_file, self.experiment.positions_file)
         return self
@@ -138,7 +163,8 @@ class MapsEnergies(VmdProc):
             self.pdb = merge.pdb
             self.psf = merge.psf
         energy_temp = os.path.join(self.directory, "energies_temp.dat")
-        self.args = [self.psf, self.pdb, self.experiment.positions_file, energy_temp]
+        self.write_epitope_file()
+        self.args = [self.psf, self.pdb, self.experiment.positions_file, self.epitope_file, self.experiment.antigen_chain_ids[0], energy_temp]
         self.args.extend(self.experiment.parameter_files)
         self.script = "interaction_energies.tcl"
         self.vmd()
@@ -218,3 +244,7 @@ def MAPs_part_category_clashes(cat1, cat2, cut_file, clash_cutoff=1.0):
             with open(cut_file, "a") as f:
                 f.write("{} {}\n".format(part1, part2).replace("_", " "))
         os.remove(clash_file)
+
+
+def atomselect_residues(residue_ids):
+    return " or ".join(["(chain {} and resid {})".format(c_id, "{}{}{}".format(*r_id)) for c_id, r_ids in residue_ids.items() for r_id in r_ids])

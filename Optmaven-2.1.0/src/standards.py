@@ -1,5 +1,6 @@
 """ This module stores information that is shared between the modules. """
 
+from collections import OrderedDict
 import itertools
 import os
 import random
@@ -67,6 +68,9 @@ PbsQueue = "lionxv"
 PbsQsub = "qsub"
 PbsArrayId = "$PBS_ARRAYID"
 PbsJobFilePrefix = "job-"
+UnixTimeCodes = OrderedDict([("Real", "%e"), ("User", "%U"), ("System", "%S")])
+PbsTimeFormat = "'{}'".format(r"\n".join(UnixTimeCodes.values()))
+TimeCommand = "/usr/bin/time"
 
 # Python settings.
 PythonCommand = "python"
@@ -76,6 +80,13 @@ DefaultOptmavenGrid_x = np.linspace(-5, 10, 7)
 DefaultOptmavenGrid_y = np.linspace(-10, 5, 7)
 DefaultOptmavenGrid_z = np.linspace(3.75, 16.25, 11)
 DefaultOptmavenGrid_zAngle = np.linspace(0, 300, 6)
+
+"""
+DefaultOptmavenGrid_x = np.linspace(-5, 10, 13)
+DefaultOptmavenGrid_y = np.linspace(-10, 5, 13)
+DefaultOptmavenGrid_z = np.linspace(3.75, 16.25, 21)
+DefaultOptmavenGrid_zAngle = np.linspace(0, 300, 6)
+"""
 
 # Input files.
 DefaultTopologyFile = os.path.join(InputsDirectory, "top_all27_prot_na.rtf")

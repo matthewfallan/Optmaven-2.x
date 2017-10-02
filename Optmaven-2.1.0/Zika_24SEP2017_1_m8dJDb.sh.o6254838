@@ -1,0 +1,72 @@
+Info) VMD for LINUXAMD64, version 1.9.3 (December 1, 2016)
+Info) http://www.ks.uiuc.edu/Research/vmd/                         
+Info) Email questions and bug reports to vmd@ks.uiuc.edu           
+Info) Please include this reference in published work using VMD:   
+Info)    Humphrey, W., Dalke, A. and Schulten, K., `VMD - Visual   
+Info)    Molecular Dynamics', J. Molec. Graphics 1996, 14.1, 33-38.
+Info) -------------------------------------------------------------
+Info) Multithreading available, 20 CPUs detected.
+Info) Free system memory: 219GB (86%)
+Info) Dynamically loaded 2 plugins in directory:
+Info) /storage/home/mfa5147/lib/vmd/plugins/LINUXAMD64/molfile
+Info) File loading in progress, please wait.
+Info) Using plugin pdb for structure file /gpfs/work/m/mfa5147/OptMAVEn_Zika/Optmaven-2.x/Optmaven-2.1.0/experiments/Zika_24SEP2017_1/structures/antigen_epitope_down.pdb
+Info) Using plugin pdb for coordinates from file /gpfs/work/m/mfa5147/OptMAVEn_Zika/Optmaven-2.x/Optmaven-2.1.0/experiments/Zika_24SEP2017_1/structures/antigen_epitope_down.pdb
+Info) Determining bond structure from distance search ...
+Info) Finished with coordinate file /gpfs/work/m/mfa5147/OptMAVEn_Zika/Optmaven-2.x/Optmaven-2.1.0/experiments/Zika_24SEP2017_1/structures/antigen_epitope_down.pdb.
+Info) Analyzing structure ...
+Info)    Atoms: 7546
+Info)    Bonds: 7622
+Info)    Angles: 0  Dihedrals: 0  Impropers: 0  Cross-terms: 0
+Info)    Bondtypes: 0  Angletypes: 0  Dihedraltypes: 0  Impropertypes: 0
+Info)    Residues: 504
+Info)    Waters: 0
+Info)    Segments: 1
+Info)    Fragments: 4   Protein: 1   Nucleic: 0
+Info) Using plugin pdb for structure file /gpfs/work/m/mfa5147/OptMAVEn_Zika/Optmaven-2.x/Optmaven-2.1.0/data/antibodies/scaffolds/MoleculeH.pdb
+Info) Using plugin pdb for coordinates from file /gpfs/work/m/mfa5147/OptMAVEn_Zika/Optmaven-2.x/Optmaven-2.1.0/data/antibodies/scaffolds/MoleculeH.pdb
+Info) Determining bond structure from distance search ...
+Info) Finished with coordinate file /gpfs/work/m/mfa5147/OptMAVEn_Zika/Optmaven-2.x/Optmaven-2.1.0/data/antibodies/scaffolds/MoleculeH.pdb.
+Info) Analyzing structure ...
+Info)    Atoms: 1403
+Info)    Bonds: 1421
+Info)    Angles: 0  Dihedrals: 0  Impropers: 0  Cross-terms: 0
+Info)    Bondtypes: 0  Angletypes: 0  Dihedraltypes: 0  Impropertypes: 0
+Info)    Residues: 91
+Info)    Waters: 0
+Info)    Segments: 1
+Info)    Fragments: 3   Protein: 4   Nucleic: 0
+Info) Using plugin pdb for structure file /gpfs/work/m/mfa5147/OptMAVEn_Zika/Optmaven-2.x/Optmaven-2.1.0/data/antibodies/scaffolds/MoleculeK.pdb
+Info) Using plugin pdb for coordinates from file /gpfs/work/m/mfa5147/OptMAVEn_Zika/Optmaven-2.x/Optmaven-2.1.0/data/antibodies/scaffolds/MoleculeK.pdb
+Info) Determining bond structure from distance search ...
+Info) Finished with coordinate file /gpfs/work/m/mfa5147/OptMAVEn_Zika/Optmaven-2.x/Optmaven-2.1.0/data/antibodies/scaffolds/MoleculeK.pdb.
+Info) Analyzing structure ...
+Info)    Atoms: 1350
+Info)    Bonds: 1364
+Info)    Angles: 0  Dihedrals: 0  Impropers: 0  Cross-terms: 0
+Info)    Bondtypes: 0  Angletypes: 0  Dihedraltypes: 0  Impropertypes: 0
+Info)    Residues: 89
+Info)    Waters: 0
+Info)    Segments: 1
+Info)    Fragments: 4   Protein: 4   Nucleic: 0
+atomselect0
+atomselect1
+atomselect2
+/gpfs/work/m/mfa5147/OptMAVEn_Zika/Optmaven-2.x/Optmaven-2.1.0/experiments/Zika_24SEP2017_1/.temp/vmd_J6G1a5/grid.dat
+/gpfs/work/m/mfa5147/OptMAVEn_Zika/Optmaven-2.x/Optmaven-2.1.0/experiments/Zika_24SEP2017_1/.temp/vmd_J6G1a5/positions.dat
+1.25
+0
+-5.0 -2.5 0.0 2.5 5.0 7.5 10.0
+-10.0 -7.5 -5.0 -2.5 0.0 2.5 5.0
+3.75 5.0 6.25 7.5 8.75 10.0 11.25 12.5 13.75 15.0 16.25
+0.0 60.0 120.0 180.0 240.0 300.0
+0 0 0
+0
+10.576000213623047
+9.456000328063965
+10.576000213623047
+-8.626999855041504
+file5
+Info) VMD for LINUXAMD64, version 1.9.3 (December 1, 2016)
+Info) Exiting normally.
+6254845.lionxv.rcc.psu.edu

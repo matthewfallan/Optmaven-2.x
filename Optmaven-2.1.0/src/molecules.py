@@ -157,7 +157,7 @@ class Molecule(object):
 
     def assemble_from_CHARMM(self, chain_ids, files, residue_numbers_by_model):
         # After running CHARMM, assemble the output files into the molecule.
-        # Thee unique part (rather than a simple merge) is that the molecules lose their chain ids within charmm, so these ids must be added back. 
+        # The unique part (rather than a simple merge) is that the molecules lose their chain ids within charmm, so these ids must be added back. 
         assembled_structure = None
         assembled_model = None
         for _id, _file in zip(chain_ids, files):
@@ -189,55 +189,15 @@ class Molecule(object):
     def get_center(self):
         return np.mean(self.get_coords(), axis=0)
 
-    def translate_to(self, point=None, file_name=None, in_place=False):
-        if point is None:
-             point = np.array([0., 0., 0.])
-        point = np.array(point)
-        center = self.get_center()
-        self.translate(point - center, file_name, in_place)
-
-    def translate(self, vector, file_name=None, in_place=False):
+    def position_antigen(self, zAngle, x, y, z, file_name=None, in_place=False):
         if file_name is None:
-            if in_place is False:
-                raise ValueError("A translation file must be given if the translation is to not be in place.")
+            if not in_place:
+                raise ValueError("An output file must be given if the repositioning is not in place.")
             file_name = self.file
-        coords = self.get_coords()
-        vector = np.array(vector).reshape((1, self.ndim))
-        trans_coords = coords + vector
-        atoms = self.get_atoms()
-        # Replace all of the atomic coordinates.
-        for coord, atom in zip(trans_coords, atoms):
-            atom.set_coord(coord)
-        # Write the translated coordinates.
-        structure = atom.get_parent().get_parent().get_parent().get_parent()
-        self.write_pdb(structure, file_name)
+        with klaus.PositionAntigen(self.experiment, self.file, file_name, zAngle, x, y, z) as p:
+            pass
         if in_place:
             self.file = file_name
-
-    def rotate(self, rot_matrix, file_name=None, in_place=False, center=True):
-        original_file = self.file
-        if file_name is None:
-            if in_place is False:
-                raise ValueError("A rotation file must be given if the rotation is to not be in place.")
-            file_name = self.file
-        if center:
-            # First get the original center.
-            original_center = self.get_center()
-            # Move the molecule to the origin before the rotation.
-            self.translate(-original_center, file_name, in_place=True)
-        rot_coords = np.dot(self.get_coords(), rot_matrix)
-        atoms = self.get_atoms()
-        # Replace all of the atomic coordinates.
-        for coord, atom in zip(rot_coords, atoms):
-            atom.set_coord(coord)
-        # Write the rotated coordinates.
-        structure = atom.get_parent().get_parent().get_parent().get_parent()
-        self.write_pdb(structure, file_name)
-        if center:
-            # Move the molecule center back to its original position.
-            self.translate(original_center, file_name, in_place=True)
-        if not in_place:
-            self.file = original_file
 
     def get_atoms(self):
         structure = self.get_structure()
@@ -380,27 +340,21 @@ class ProtoAntibody(object):
 
     def to_molecule(self, name, _file, experiment):
         # First create the antibody heavy and light chains.
-        garbage = list()
         directory = tempfile.mkdtemp(dir=experiment.get_temp(), prefix="to_mol_")
         ab_name = "ab_temp"
         ab_file = os.path.join(directory, "ab_temp.pdb")
-        garbage.append(ab_file)
         parts = [maps.join(cdr, number) for cdr, number in self.parts.items()]
         with klaus.CreateAntibody(experiment, parts, ab_file) as p:
             pass
         antibody = Molecule(ab_name, ab_file, experiment)
         # Then position the antigen.
-        ag_name = "ag_temp"
         ag_file = os.path.join(directory, "ag_temp.pdb")
-        garbage.append(ag_file)
         x = self.position[standards.PositionOrder.index(standards.xLabel)]
         y = self.position[standards.PositionOrder.index(standards.yLabel)]
         z = self.position[standards.PositionOrder.index(standards.zLabel)]
         zAngle = self.position[standards.PositionOrder.index(standards.zAngleLabel)]
-        rot_matrix = standards.rotate_axis_angle(standards.zAxis, zAngle)
         antigen = Molecule(ag_name, experiment.epitope_zmin_file, experiment)
-        antigen.rotate(rot_matrix, file_name=ag_file, in_place=True, center=False)
-        antigen.translate([x, y, z], file_name=ag_file, in_place=True)
+        antigen.position_antigen(zAngle, x, y, z, file_name=ag_file, in_place=True)
         # Merge the antigen and antibody and save the structure as a PDB..
         _complex = merge([antibody, antigen], return_molecule=True, merged_name=name, merged_file=_file, write_pdb=True)
         # Remove the directory in which the complex was assembled.

@@ -15,6 +15,7 @@ from Bio.PDB.PDBIO import Select
 from Bio import SeqIO
 import numpy as np
 
+import benchmarking
 import charmm
 from console import clear, disp
 import klaus
@@ -49,26 +50,42 @@ class Experiment(object):
         self.errors = os.path.join(self.directory, "errors.txt")
         self.structure_directory = os.path.join(self.directory, "structures")
         os.mkdir(self.structure_directory)
+        self.benchmarking = user_input.get_yn("Would you like to turn on benchmarking? ")
+        if self.benchmarking:
+            self.benchmarks = list()
 
     def save(self):
         with open(self.file, "w") as f:
             pkl.dump(self, f)
 
-    def submit(self, args=None, jobs=None, options=None, queue=True):
+    def submit(self, args=None, jobs=None, options=None, queue=True, purpose=None):
         if args is None:
             args = [""]
         if jobs is None:
             handle, file_name = tempfile.mkstemp(prefix="{}_".format(self.name_contig), suffix=".sh", dir=self.temp)
             os.close(handle)
-            command = "\n".join(["{} {} {} {}".format(standards.PythonCommand, os.path.realpath(__file__), self.file, arg) for arg in args])
-            submitter.submit(file_name, command, self.walltime, options=options, queue=queue)
+            command = "{} {} {} {}".format(standards.PythonCommand, os.path.realpath(__file__), self.file, " ".join(map(str, args)))
+            if self.benchmarking:
+                time_file = self.make_time_file()
+                self.add_benchmark_file(time_file, purpose)
+            else:
+                time_file = None
+            submitter.submit(file_name, command, self.walltime, options=options, queue=queue, purpose=purpose, time_file=time_file)
         else:
-            s = submitter.PbsBatchSubmitter(self)
+            s = submitter.PbsBatchSubmitter(self, purpose)
             s.submit(standards.PythonCommand, [os.path.realpath(__file__), self.file], jobs)
 
-    def save_and_submit(self, queue=True):
+    def save_and_submit(self, queue=True, purpose=None):
         self.save()
-        self.submit(queue=queue)
+        self.submit(queue=queue, purpose=purpose)
+
+    def add_benchmark(self, task):
+        self.benchmarks.append(task)
+        self.save()
+
+    def add_benchmark_file(self, _file, purpose):
+        task = benchmarking.TimeFile(_file, purpose)
+        self.add_benchmark(task)
 
     def ask(self, attribute, number=False, valid_path=False):
         try:
@@ -99,6 +116,11 @@ class Experiment(object):
         if not os.path.isdir(self.temp):
             os.mkdir(self.temp)
         return self.temp
+
+    def make_time_file(self):
+        handle, name = tempfile.mkstemp(dir=self.directory, prefix="time_", suffix=".txt")
+        os.close(handle)
+        return name
 
     def document_error(self, message):
         try:
@@ -197,13 +219,12 @@ class OptmavenExperiment(Experiment):
         # Define the antigen and epitope.
         entire_input_model = self.get_entire_input_model()
         antigen_input_chains = self.select_antigen_input_chains(entire_input_model)
-        #antigen_input_residues = [residue for chain in antigen_input_chains for residue in self.select_antigen_input_residues(chain)]
         self.antigen_chain_ids = [chain.get_id() for chain in antigen_input_chains]
         self.select_epitope_residues(antigen_input_chains)
         self.write_antigen_input_residues(entire_input_model)
         self.status = 0
         self.report_directory()
-        self.save_and_submit()
+        self.save_and_submit(purpose="Antigen relaxation, mounting, and positioning.")
 
     def change_status(self, new_status=None):
         if new_status is None:
@@ -271,35 +292,16 @@ class OptmavenExperiment(Experiment):
         antigen_molecule.relax(self.antigen_relaxed_file)
         self.minimize_epitope_z_coordinates(antigen_molecule)
 
-    def minimize_epitope_z_coordinates(self, antigen_molecule, position_antigen=True):
-        # First move the antigen to the origin.
-        antigen_molecule.translate_to(in_place=True)
-        all_atoms = antigen_molecule.get_atom_array()
-        epitope_ids = {(c_id, str(r_id[1])) for c_id, r_ids in self.epitope_residue_ids.items() for r_id in r_ids}
-        epitope_selector = np.array([tuple(map(str, _id)) in epitope_ids for _id in all_atoms[["C", "R"]]])
-        epitope_atoms = all_atoms[epitope_selector]
-        coord_dims = ["x", "y", "z"]
-        coord_n = len(coord_dims)
-        all_coords = all_atoms[coord_dims].view(dtype=np.float).reshape(-1, coord_n)
-        epi_coords = epitope_atoms[coord_dims].view(dtype=np.float).reshape(-1, coord_n)
-        all_center = np.mean(all_coords, axis=0)
-        epi_center = np.mean(epi_coords, axis=0)
-        epi_vector = epi_center - all_center
-        # Make a rotation matrix that rotates the epitope vector to the negative z axis.
-        rot_matrix = standards.rotate_vi_to_vf(epi_vector, -standards.zAxis)
-        self.epitope_zmin_file = os.path.join(self.structure_directory, "antigen_epitope_down.pdb")
-        antigen_molecule.rotate(rot_matrix, self.epitope_zmin_file, in_place=True)
-        # Rotate the antigen so that its z rotation angle is 0.
-        #FIXME
-        # Translate the antigen along the z axis to center the epitope at the origin.
-        antigen_molecule.translate(standards.zAxis * np.linalg.norm(epi_vector),in_place=True)
+    def minimize_epitope_z_coordinates(self, antigen_molecule, grid_search=True):
+        self.epitope_zmin_file = self.antigen_relaxed_file
+        antigen_molecule.position_antigen(0, 0, 0, 0, in_place=True)
         # Position the antigen using a grid search.
-        if position_antigen:
-            self.position_antigen()
+        if grid_search:
+            self.grid_search()
         
-    def position_antigen(self):
+    def grid_search(self):
         self.positions_file = os.path.join(self.temp, "positions.dat")
-        with klaus.PositionAntigen(self) as x:
+        with klaus.GridSearch(self) as x:
             pass
         self.change_status()
         self.maps_energies_all(None)
@@ -319,7 +321,7 @@ class OptmavenExperiment(Experiment):
             pass
         self.save()
         jobs = {part: self.get_maps_part_energy_file_finished(part) for part in maps.parts}
-        self.submit(jobs=jobs)
+        self.submit(jobs=jobs, purpose="MAPs energy calculations")
 
     def maps_energy_batch(self, args):
         """ Calculate the interacton energy between the antigen and a batch of MAPs parts. """
@@ -346,7 +348,6 @@ class OptmavenExperiment(Experiment):
                     position = (zAngle, x, y, z)
                     maps_energies[position].append([maps.get_part_cdr(part), maps.get_part_number(part), energy])
         self.change_status()
-        #FIXME: remove maps energies directory
         self.select_parts_all(maps_energies)
 
     def get_select_parts_directory(self, index):
@@ -375,8 +376,10 @@ class OptmavenExperiment(Experiment):
             with open(self.get_select_parts_energy_file(index), "w") as f:
                 pkl.dump(position_energies, f)
         self.save()
+        # Remove maps energies directory: all energies are saved in pickle files.
+        self.safe_rmtree(self.maps_energies_directory)
         jobs = {index: self.get_select_parts_file_finished(index) for index in self.positions}
-        self.submit(jobs=jobs)
+        self.submit(jobs=jobs, purpose="Select parts")
 
     def select_parts_batch(self, args):
         index_file = args[2]
@@ -469,7 +472,7 @@ class OptmavenExperiment(Experiment):
             pass
         jobs = {index: self.results_pickle_file(index) for index in range(self.select_number)}
         self.save()
-        self.submit(jobs=jobs)
+        self.submit(jobs=jobs, purpose="Relax antigen-antibody complexes")
 
     def relax_complexes_batch(self, args):
         index_file = args[2]
@@ -630,7 +633,7 @@ class CreateAntigenAntibodyComplexExperiment(OptmavenExperiment):
         OptmavenExperiment.write_antigen_input_residues(self, entire_input_model)
         antigen_molecule = molecules.Molecule(self.antigen_input_name, self.antigen_input_file, self) 
         # Center and point the epitope downward.
-        OptmavenExperiment.minimize_epitope_z_coordinates(self, antigen_molecule, position_antigen=False)
+        OptmavenExperiment.minimize_epitope_z_coordinates(self, antigen_molecule, grid_search=False)
         # Assemble the complex.
         self.proto_antibody = molecules.ProtoAntibody(parts, position, energy)
         self.proto_antibody.to_molecule("complex", output_file, self)
