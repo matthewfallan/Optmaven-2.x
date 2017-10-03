@@ -462,15 +462,13 @@ class OptmavenExperiment(Experiment):
                         elif isinstance(benchmark, benchmarking.DriveUsage):
                             totals["Drive Usage"] = max(d["Drive Usage"], totals["Drive Usage"])
                 # Remove the temporary directory, then add the final drive usage.
-                #FIXME self.safe_rmtree(self.temp)
+                self.safe_rmtree(self.temp)
                 du = self.add_drive_usage().to_dict()
                 writer.writerow(du)
                 totals["Drive Usage"] = max(du["Drive Usage"], totals["Drive Usage"])
                 writer.writerow(totals)
         else:
-            pass
-            #FIXME: remove temp directory
-            #self.safe_rmtree(self.temp) 
+            self.safe_rmtree(self.temp) 
         self.change_status()
 
     def relax_antigen(self, args):

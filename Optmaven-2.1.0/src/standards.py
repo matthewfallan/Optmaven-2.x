@@ -11,6 +11,7 @@ import sys
 import Bio
 import numpy as np
 
+
 OptmavenVersion = "2.1.0"
 OptmavenName = "Optmaven-{}".format(OptmavenVersion)
 
@@ -66,8 +67,8 @@ DefaultNumberOfDesigns = 50
 
 # Default PBS settings.
 DefaultWalltime = 86399  # 23 hours, 59 minutes, 59 seconds
-DefaultBatchSize = 3
-PbsQueue = "lionxv"
+DefaultBatchSize = 1
+PbsQueue = "lionxf"
 PbsQsub = "qsub"
 PbsArrayId = "$PBS_ARRAYID"
 PbsJobFilePrefix = "job-"
@@ -263,3 +264,19 @@ def safe_rmtree(directory):
         shutil.rmtree(directory)
     else:
         raise OSError("Directory trees may only be removed if they are subdirectories of {}".format(ExperimentsDirectory))
+
+
+# Safe removal of entire experiments.
+def safe_rm_experiment(experiment):
+    full_experiment = os.path.join(ExperimentsDirectory, experiment)
+    if is_path_component(experiment) and experiment in os.listdir(ExperimentsDirectory) and os.path.isdir(full_experiment):
+        if raw_input("Are you SURE you want to remove the Experiment {}? You CANNOT undo this action. ".format(experiment)).lower().startswith("y"):
+            shutil.rmtree(full_experiment)
+            if os.path.isdir(full_experiment):
+                print("Optmaven could not completely remove {}.".format(experiment))
+            else:
+                print("The Experiment {} has been removed.".format(experiment))
+        else:
+            print("The Experiment {} was not removed.".format(experiment))
+    else:
+        raise OSError("Cannot remove Experiment: {} does not exist.".format(full_experiment))
