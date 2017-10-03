@@ -53,7 +53,8 @@ class Experiment(object):
         os.mkdir(self.structure_directory)
         self.benchmarking = user_input.get_yn("Would you like to turn on benchmarking? ")
         if self.benchmarking:
-            self.benchmarks = list()
+            self.benchmark_directory = os.path.join(self.get_temp(), "benchmarking")
+            os.mkdir(self.benchmark_directory)
             self.add_drive_usage()
 
     def save(self):
@@ -82,8 +83,10 @@ class Experiment(object):
         self.submit(queue=queue)
 
     def add_benchmark(self, task):
-        self.benchmarks.append(task)
-        self.save()
+        handle, file_name = tempfile.mkstemp(dir=self.benchmark_directory, suffix=".pickle")
+        os.close(handle)
+        with open(file_name, "w") as f:
+            pkl.dump(task, f)
 
     def add_time_file(self, _file, status_offset=0):
         task, purpose = self.get_task(self.status + status_offset)
@@ -91,7 +94,9 @@ class Experiment(object):
         self.add_benchmark(task)
 
     def add_drive_usage(self):
-        self.add_benchmark(benchmarking.DriveUsage(self))
+        du = benchmarking.DriveUsage(self)
+        self.add_benchmark(du)
+        return du
 
     def ask(self, attribute, number=False, valid_path=False):
         try:
@@ -124,7 +129,7 @@ class Experiment(object):
         return self.temp
 
     def make_time_file(self):
-        handle, name = tempfile.mkstemp(dir=self.directory, prefix="time_", suffix=".txt")
+        handle, name = tempfile.mkstemp(dir=self.get_temp(), prefix="time_", suffix=".txt")
         os.close(handle)
         return name
 
@@ -136,6 +141,18 @@ class Experiment(object):
             error_file = "Optmaven_Experiment_errors.txt"
             with open(error_file, "a") as f:
                 f.write("{}\n{}".format(message, e.message))
+
+    def run(self, args=None):
+        try:
+            try:
+                task, self.purpose = self.get_task(self.status)
+            except (IndexError, TypeError):
+                raise ValueError("Bad Experiment status: {}".format(self.status))
+            else:
+                task(args)
+        except Exception as e:
+            tb = traceback.format_exc()
+            self.document_error(tb)
 
     def run_next(self, args=None):
         self.change_status()
@@ -165,6 +182,142 @@ class Experiment(object):
 
     def completed(self, args):
         disp("{} has finished running. Please view the results in {}".format(self.name, self.directory))
+
+
+class InteractionExperiment(Experiment):
+    """ This Experiment simply calculates the interaction energy between two groups of chains, performs a relaxation, then calculates the energy again. """
+    def __init__(self):
+        Experiment.__init__(self)
+        self.topology_files = [standards.DefaultTopologyFile]
+        self.parameter_files = [standards.DefaultParameterFile]
+        self.solvation_files = [standards.DefaultSolvationFile]
+        self.charmm_energy_terms = standards.DefaultCharmmEnergyTerms
+        self.charmm_iterations = standards.DefaultCharmmIterations
+        self.walltime = standards.DefaultWalltime
+        self.molecule = self.get_molecule("input", "Please enter the name of the molecule for {}: ".format(self.name))
+        self.molecule_file = self.molecule.file
+        # Select chains.
+        self.chain_ids = [chain.get_id() for chain in self.molecule.get_chains()]
+        chains_left = list(self.chain_ids)
+        self.chain_groups = list()
+        for i in [1, 2]:
+            group = user_input.select_from_list("Please select the chain(s) for group {}: ".format(i), chains_left, min_number=1, max_number=(len(chains_left) + i - 2))
+            for chain_id in group:
+                chains_left.pop(chains_left.index(chain_id))
+            self.chain_groups.append(group)
+        self.status = 0
+        self.save_and_submit()
+
+    def get_task(self, status):
+        return [(self.relaxation, "Relaxation")][status]
+
+    def relaxation(self, args):
+        garbage = list()
+        # Calculate interaction energy before relaxation.
+        group1, group2 = self.molecule.disassemble_into_chains(self.chain_groups)
+        self.energies = dict()
+        with charmm.InteractionEnergy(self, [group1, group2]) as e:
+            self.energies["Unrelaxed"] = e.energy
+            if self.benchmarking:
+                self.add_drive_usage()
+        # Relax the complex.
+        self.relaxed_file = os.path.join(self.structure_directory, "relaxed.pdb")
+        self.molecule.relax(relaxed_file=self.relaxed_file, in_place=True)
+        # Calculate interaction energy after relaxation.
+        group1, group2 = self.molecule.disassemble_into_chains(self.chain_groups)
+        garbage.extend([group1.file, group2.file])
+        with charmm.InteractionEnergy(self, [group1, group2]) as e:
+            self.energies["Relaxed"] = e.energy
+            if self.benchmarking:
+                self.add_drive_usage()
+        for fn in garbage:
+            try:
+                os.remove(fn)
+            except OSError:
+                pass
+        self.create_report()
+        self.safe_rmtree(self.get_temp())
+    
+    def create_report(self):
+        summary = [
+            ("Experiment name", self.name),
+            ("Molecule input file", self.molecule_file),
+            ("Group 1 chains", ", ".join(self.chain_groups[0])),
+            ("Group 2 chains", "; ".join(self.chain_groups[1]))
+        ]
+        self.summary_file = os.path.join(self.directory, "Summary.txt")
+        with open(self.summary_file, "w") as f:
+            f.write("\n".join(["{}: {}".format(field, value) for field, value in summary]))
+        self.results_file = os.path.join(self.directory, "Results.csv")
+        with open(self.results_file, "w") as f:
+            writer = csv.DictWriter(f, ["Unrelaxed", "Relaxed"])
+            writer.writeheader()
+            writer.writerow(self.energies)
+
+
+class ResidueContactExperiment(Experiment):
+    def __init__(self):
+        Experiment.__init__(self)
+        self.molecule = self.get_molecule("input", "Please enter the name of the molecule for {}: ".format(self.name))
+        self.chain_ids = [chain.get_id() for chain in self.molecule.get_chains()]
+        chains_left = list(self.chain_ids)
+        self.chain_groups = list()
+        self.group_numbers = [1, 2]
+        for i in self.group_numbers:
+            group = user_input.select_from_list("Please select the chain(s) for group {}: ".format(i), chains_left, min_number=1, max_number=(len(chains_left) + i - 2))
+            for chain_id in group:
+                chains_left.pop(chains_left.index(chain_id))
+            self.chain_groups.append(group)
+        g1, g2 = self.chain_groups
+        group_from_chain = dict()
+        for group_number, group in zip(self.group_numbers, self.chain_groups):
+            for chain in group:
+                group_from_chain[chain] = group_number
+        self.cutoff = self.ask("cutoff distance", number=True)
+        contacts = self.molecule.interchain_residue_contacts(g1, g2, self.cutoff)
+        # Restructure the contact map so that it looks like {group_number: {chain: [residue, residue, ...], chain: ...}, group_number: ...}
+        self.contacts_from_group = defaultdict(lambda: defaultdict(list))
+        for chain_pair, chain_pair_contacts in contacts.iteritems():
+            for chain in chain_pair:
+                group = group_from_chain[chain]
+                residues = self.contacts_from_group[group][chain]
+                for contact in chain_pair_contacts:
+                    residue = contact[chain]
+                    if residue not in residues:
+                        residues.append(residue)
+        # Sort the residues by their ids, and then convert them into residue codes.
+        for group, chains in self.contacts_from_group.iteritems():
+            for chain, residues in chains.iteritems():
+                residues.sort(key=Residue.Residue.get_id)
+                for i in range(len(residues)):
+                    residues[i] = molecules.residue_code(residues[i])
+        self.create_report()
+
+    def create_report(self):
+        summary = [
+            ("Experiment name", self.name),
+            ("Molecule input file", self.molecule.file),
+            ("Group 1 chains", ", ".join(self.chain_groups[0])),
+            ("Group 2 chains", "; ".join(self.chain_groups[1])),
+            ("Cutoff distnce", self.cutoff)
+        ]
+        self.summary_file = os.path.join(self.directory, "Summary.txt")
+        with open(self.summary_file, "w") as f:
+            f.write("\n".join(["{}: {}".format(field, value) for field, value in summary]))
+        self.results_file = os.path.join(self.directory, "Results.csv")
+        with open(self.results_file, "w") as f:
+            fields = ["Group", "Chain", "Residues"]
+            writer = csv.DictWriter(f, fields)
+            writer.writeheader()
+            for group in self.group_numbers:
+                for chain in self.chain_ids:
+                    if chain in self.contacts_from_group[group]:
+                        info = {
+                            "Group": str(group),
+                            "Chain": chain,
+                            "Residues": ",".join(self.contacts_from_group[group][chain])
+                        }
+                        writer.writerow(info)
 
 
 class TransformMoleculeExperiment(Experiment):
@@ -250,19 +403,6 @@ class OptmavenExperiment(Experiment):
             (self.completed, "Completed")
         ][status]
 
-
-    def run(self, args=None):
-        try:
-            try:
-                task, self.purpose = self.get_task(self.status)
-            except (IndexError, TypeError):
-                raise ValueError("Bad Experiment status: {}".format(self.status))
-            else:
-                task(args)
-        except Exception as e:
-            tb = traceback.format_exc()
-            self.document_error(tb)
-
     def create_report(self, args):
         summary = [
             ("Experiment name", self.name),
@@ -299,7 +439,18 @@ class OptmavenExperiment(Experiment):
                 totals = {field: 0.0 for field in standards.UnixTimeCodes.keys() + ["Drive Usage"]}
                 totals["Type"] = "Total"
                 writer.writeheader()
-                for benchmark in self.benchmarks:
+                benchmark_files = [os.path.join(self.benchmark_directory, fn) for fn in os.listdir(self.benchmark_directory)]
+                benchmarks = list()
+                for fn in benchmark_files:
+                    with open(fn) as f:
+                        benchmarks.append(pkl.load(f))
+                benchmarks.sort(key=benchmarking.Task.get_time_stamp)
+                for benchmark in benchmarks:
+                    try:
+                         print(benchmark.time)
+                    except AttributeError:
+                         pass
+                    #FIXME
                     d = benchmark.to_dict()
                     writer.writerow(d)
                     if isinstance(benchmark, benchmarking.Time):
@@ -309,10 +460,9 @@ class OptmavenExperiment(Experiment):
                         totals["Drive Usage"] = max(d["Drive Usage"], totals["Drive Usage"])
                 # Remove the temporary directory, then add the final drive usage.
                 #FIXME self.safe_rmtree(self.temp)
-                self.add_drive_usage()
-                d = self.benchmarks[-1].to_dict()
-                writer.writerow(d)
-                totals["Drive Usage"] = max(d["Drive Usage"], totals["Drive Usage"])
+                du = self.add_drive_usage().to_dict()
+                writer.writerow(du)
+                totals["Drive Usage"] = max(du["Drive Usage"], totals["Drive Usage"])
                 writer.writerow(totals)
         else:
             pass

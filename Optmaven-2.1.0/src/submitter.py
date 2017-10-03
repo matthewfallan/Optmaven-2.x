@@ -117,9 +117,12 @@ def script_initial(queue, walltime):
     walltime_hours = (walltime_mins - mins) / 60
     hours = walltime_hours
     walltime_text = "{0:>2}:{0:>2}:{0:>2}".format(hours, mins, secs)
+    destination = "/dev/null"
     lines = ["#!/bin/sh",
              "#PBS -q {}".format(queue),
-             "#PBS -l walltime={}".format(walltime_text)]
+             "#PBS -l walltime={}".format(walltime_text),
+             "#PBS -j oe",
+             "#PBS -o {}".format(destination)]
     return lines
 
 

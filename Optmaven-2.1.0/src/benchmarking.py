@@ -11,9 +11,12 @@ class Task(object):
         self.purpose = purpose
         self.detail = detail
         if time_stamp is None:
-            self.time_stamp = datetime.datetime.now().strftime(standards.DatetimeFormat)
+            self.time_stamp = datetime.datetime.now()
         else:
             self.time_stamp = time_stamp
+
+    def get_time_stamp(self):
+        return self.time_stamp
 
 
 class Time(Task):
@@ -26,7 +29,7 @@ class Time(Task):
             "Type": "Time",
             "Purpose": self.purpose,
             "Detail": self.detail,
-            "Time Stamp": self.time_stamp
+            "Time Stamp": self.time_stamp.strftime(standards.DatetimeFormat)
         }
         for _type in standards.UnixTimeCodes:
             info[_type] = self.time[_type]
@@ -52,16 +55,15 @@ class DriveUsage(Task):
         
     def to_dict(self):
         info = {
-            "Type": "Time",
+            "Type": "Drive Usage",
             "Purpose": self.purpose,
             "Detail": self.detail,
             "Drive Usage": self.drive_usage,
-            "Time Stamp": self.time_stamp
+            "Time Stamp": self.time_stamp.strftime(standards.DatetimeFormat)
         }
         return info
-    
+ 
 
 def parse_time_file(_file):
     with open(_file) as f:
         return {time_type: float(line) for line, time_type in zip(f, standards.UnixTimeCodes)}
-    

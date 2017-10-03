@@ -1,0 +1,3 @@
+import experiment
+
+experiment.ResidueContactExperiment()
