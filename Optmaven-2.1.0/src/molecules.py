@@ -348,6 +348,7 @@ class ProtoAntibody(object):
             pass
         antibody = Molecule(ab_name, ab_file, experiment)
         # Then position the antigen.
+        ag_name = "ag_temp"
         ag_file = os.path.join(directory, "ag_temp.pdb")
         x = self.position[standards.PositionOrder.index(standards.xLabel)]
         y = self.position[standards.PositionOrder.index(standards.yLabel)]

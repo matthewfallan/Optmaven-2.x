@@ -29,6 +29,7 @@ import user_input
 
 class Experiment(object):
     def __init__(self):
+        self.purpose = "Initialization"
         clear()
         do = True
         while do:
@@ -53,12 +54,13 @@ class Experiment(object):
         self.benchmarking = user_input.get_yn("Would you like to turn on benchmarking? ")
         if self.benchmarking:
             self.benchmarks = list()
+            self.add_drive_usage()
 
     def save(self):
         with open(self.file, "w") as f:
             pkl.dump(self, f)
 
-    def submit(self, args=None, jobs=None, options=None, queue=True, purpose=None):
+    def submit(self, args=None, jobs=None, options=None, queue=True):
         if args is None:
             args = [""]
         if jobs is None:
@@ -67,25 +69,29 @@ class Experiment(object):
             command = "{} {} {} {}".format(standards.PythonCommand, os.path.realpath(__file__), self.file, " ".join(map(str, args)))
             if self.benchmarking:
                 time_file = self.make_time_file()
-                self.add_benchmark_file(time_file, purpose)
+                self.add_time_file(time_file)
             else:
                 time_file = None
-            submitter.submit(file_name, command, self.walltime, options=options, queue=queue, purpose=purpose, time_file=time_file)
+            submitter.submit(file_name, command, self.walltime, options=options, queue=queue, purpose=self.purpose, time_file=time_file)
         else:
-            s = submitter.PbsBatchSubmitter(self, purpose)
+            s = submitter.PbsBatchSubmitter(self)
             s.submit(standards.PythonCommand, [os.path.realpath(__file__), self.file], jobs)
 
-    def save_and_submit(self, queue=True, purpose=None):
+    def save_and_submit(self, queue=True):
         self.save()
-        self.submit(queue=queue, purpose=purpose)
+        self.submit(queue=queue)
 
     def add_benchmark(self, task):
         self.benchmarks.append(task)
         self.save()
 
-    def add_benchmark_file(self, _file, purpose):
+    def add_time_file(self, _file, status_offset=0):
+        task, purpose = self.get_task(self.status + status_offset)
         task = benchmarking.TimeFile(_file, purpose)
         self.add_benchmark(task)
+
+    def add_drive_usage(self):
+        self.add_benchmark(benchmarking.DriveUsage(self))
 
     def ask(self, attribute, number=False, valid_path=False):
         try:
@@ -224,7 +230,7 @@ class OptmavenExperiment(Experiment):
         self.write_antigen_input_residues(entire_input_model)
         self.status = 0
         self.report_directory()
-        self.save_and_submit(purpose="Antigen relaxation, mounting, and positioning.")
+        self.save_and_submit()
 
     def change_status(self, new_status=None):
         if new_status is None:
@@ -232,20 +238,23 @@ class OptmavenExperiment(Experiment):
         self.status = new_status
         self.save()
 
+    def get_task(self, status):
+        return [
+            (self.relax_antigen, "Antigen relaxation, positioning, and grid search"),
+            (self.maps_energy_batch, "MAPs energy calculations"),
+            (self.collect_maps_energies, "Prepare for MILP design"),
+            (self.select_parts_batch, "MILP design"),
+            (self.select_antibodies, "Select designs"),
+            (self.relax_complexes_batch, "Relaxing designs"),
+            (self.create_report, "Creating report"),
+            (self.completed, "Completed")
+        ][status]
+
+
     def run(self, args=None):
-        tasks = [
-            self.relax_antigen,
-            self.maps_energy_batch,
-            self.collect_maps_energies,
-            self.select_parts_batch,
-            self.select_antibodies,
-            self.relax_complexes_batch,
-            self.create_report,
-            self.completed
-        ]
         try:
             try:
-                task = tasks[self.status]
+                task, self.purpose = self.get_task(self.status)
             except (IndexError, TypeError):
                 raise ValueError("Bad Experiment status: {}".format(self.status))
             else:
@@ -283,6 +292,32 @@ class OptmavenExperiment(Experiment):
             writer.writeheader()
             for result in result_report_info:
                 writer.writerow(result)
+        if self.benchmarking:
+            self.benchmarking_file = os.path.join(self.directory, "Benchmarking.csv")
+            with open(self.benchmarking_file, "w") as f:
+                writer = csv.DictWriter(f, fieldnames=standards.BenchmarkingFields)
+                totals = {field: 0.0 for field in standards.UnixTimeCodes.keys() + ["Drive Usage"]}
+                totals["Type"] = "Total"
+                writer.writeheader()
+                for benchmark in self.benchmarks:
+                    d = benchmark.to_dict()
+                    writer.writerow(d)
+                    if isinstance(benchmark, benchmarking.Time):
+                        for field in standards.UnixTimeCodes:
+                            totals[field] += d[field]
+                    elif isinstance(benchmark, benchmarking.DriveUsage):
+                        totals["Drive Usage"] = max(d["Drive Usage"], totals["Drive Usage"])
+                # Remove the temporary directory, then add the final drive usage.
+                #FIXME self.safe_rmtree(self.temp)
+                self.add_drive_usage()
+                d = self.benchmarks[-1].to_dict()
+                writer.writerow(d)
+                totals["Drive Usage"] = max(d["Drive Usage"], totals["Drive Usage"])
+                writer.writerow(totals)
+        else:
+            pass
+            #FIXME: remove temp directory
+            #self.safe_rmtree(self.temp) 
         self.change_status()
 
     def relax_antigen(self, args):
@@ -302,7 +337,8 @@ class OptmavenExperiment(Experiment):
     def grid_search(self):
         self.positions_file = os.path.join(self.temp, "positions.dat")
         with klaus.GridSearch(self) as x:
-            pass
+            if self.benchmarking:
+                self.add_drive_usage()
         self.change_status()
         self.maps_energies_all(None)
 
@@ -321,7 +357,7 @@ class OptmavenExperiment(Experiment):
             pass
         self.save()
         jobs = {part: self.get_maps_part_energy_file_finished(part) for part in maps.parts}
-        self.submit(jobs=jobs, purpose="MAPs energy calculations")
+        self.submit(jobs=jobs)
 
     def maps_energy_batch(self, args):
         """ Calculate the interacton energy between the antigen and a batch of MAPs parts. """
@@ -333,7 +369,8 @@ class OptmavenExperiment(Experiment):
    
     def maps_energy_single(self, part):
         with klaus.MapsEnergies(self, part, self.get_maps_part_energy_file_finished(part)) as energies:
-            pass
+            if self.benchmarking:
+                self.add_drive_usage()
     
     def collect_maps_energies(self, args):
         maps_energies = defaultdict(list)
@@ -375,11 +412,15 @@ class OptmavenExperiment(Experiment):
                 pass
             with open(self.get_select_parts_energy_file(index), "w") as f:
                 pkl.dump(position_energies, f)
+        if self.benchmarking:
+            self.add_drive_usage()
         self.save()
         # Remove maps energies directory: all energies are saved in pickle files.
         self.safe_rmtree(self.maps_energies_directory)
+        if self.benchmarking:
+            self.add_drive_usage()
         jobs = {index: self.get_select_parts_file_finished(index) for index in self.positions}
-        self.submit(jobs=jobs, purpose="Select parts")
+        self.submit(jobs=jobs)
 
     def select_parts_batch(self, args):
         index_file = args[2]
@@ -406,6 +447,8 @@ class OptmavenExperiment(Experiment):
         antibody = molecules.ProtoAntibody(solution, position, energy)
         with open(self.get_select_parts_file_finished(index), "w") as f:
             pkl.dump(antibody, f)
+        if self.benchmarking:
+            self.add_drive_usage()
 
     def select_antibodies(self, args):
         # Cluster the antibodies based on their coordinates.
@@ -440,6 +483,12 @@ class OptmavenExperiment(Experiment):
             pass
         self.unrelaxed_complex_files = [os.path.join(self.unrelaxed_complex_directory, "complex_{}.pdb".format(i)) for i in range(self.select_number)]
         [ab.to_molecule("unrelaxed", _file, self) for ab, _file in zip(self.highest_ranked_designs, self.unrelaxed_complex_files)]
+        if self.benchmarking:
+            self.add_drive_usage()
+        # Remove the select parts directory; it is no longer needed.
+        self.safe_rmtree(self.select_parts_directory)
+        if self.benchmarking:
+            self.add_drive_usage()
         self.change_status() 
         self.relax_complexes_all()
 
@@ -472,7 +521,7 @@ class OptmavenExperiment(Experiment):
             pass
         jobs = {index: self.results_pickle_file(index) for index in range(self.select_number)}
         self.save()
-        self.submit(jobs=jobs, purpose="Relax antigen-antibody complexes")
+        self.submit(jobs=jobs)
 
     def relax_complexes_batch(self, args):
         index_file = args[2]
@@ -489,6 +538,8 @@ class OptmavenExperiment(Experiment):
         garbage.extend([antigen.file, antibody.file])
         with charmm.InteractionEnergy(self, [antigen, antibody]) as e:
             unrelaxed_energy = e.energy
+            if self.benchmarking:
+                self.add_drive_usage()
         # Relax the complex.
         _complex.relax(relaxed_file=self.relaxed_complex_file(index), in_place=True)
         # Calculate interaction energy after relaxation.
@@ -496,6 +547,8 @@ class OptmavenExperiment(Experiment):
         garbage.extend([antigen.file, antibody.file])
         with charmm.InteractionEnergy(self, [antigen, antibody]) as e:
             relaxed_energy = e.energy
+            if self.benchmarking:
+                self.add_drive_usage()
         result = OptmavenResult(self.result_name(index), self.results_directory(index), _complex, self.highest_ranked_designs[index], unrelaxed_energy, relaxed_energy) 
         with open(self.results_pickle_file(index), "w") as f:
             pkl.dump(result, f)

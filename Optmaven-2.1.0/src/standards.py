@@ -55,6 +55,9 @@ SelectAll = "all"
 SelectNone = "none"
 EscapeCharacter = "\\"
 
+# Datetime settings.
+DatetimeFormat = "%Y %b %d %H:%M:%S"
+
 # Path configuration.
 AllowedPathCharacters = string.letters + string.digits + "_."
 
@@ -63,7 +66,7 @@ DefaultNumberOfDesigns = 50
 
 # Default PBS settings.
 DefaultWalltime = 86399  # 23 hours, 59 minutes, 59 seconds
-DefaultBatchSize = 10
+DefaultBatchSize = 3
 PbsQueue = "lionxv"
 PbsQsub = "qsub"
 PbsArrayId = "$PBS_ARRAYID"
@@ -71,6 +74,9 @@ PbsJobFilePrefix = "job-"
 UnixTimeCodes = OrderedDict([("Real", "%e"), ("User", "%U"), ("System", "%S")])
 PbsTimeFormat = "'{}'".format(r"\n".join(UnixTimeCodes.values()))
 TimeCommand = "/usr/bin/time"
+
+# Benchmarking settings.
+BenchmarkingFields = ["Type", "Purpose", "Detail"] + UnixTimeCodes.keys() + ["Drive Usage", "Time Stamp"]
 
 # Python settings.
 PythonCommand = "python"

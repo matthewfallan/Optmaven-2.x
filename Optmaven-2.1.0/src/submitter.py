@@ -10,9 +10,9 @@ import standards
 
 
 class PbsBatchSubmitter(object):
-    def __init__(self, experiment, purpose):
+    def __init__(self, experiment):
         self.experiment = experiment
-        self.purpose = purpose
+        self.purpose = experiment.purpose
         self.directory = tempfile.mkdtemp(dir=self.experiment.get_temp(), prefix="pbs_")
         self.file = os.path.join(self.directory, "pbs.pickle")
         self.jobs_file_prefix = os.path.join(self.directory, standards.PbsJobFilePrefix)
@@ -47,8 +47,8 @@ class PbsBatchSubmitter(object):
         for i, _file in enumerate(self.get_time_files()):
             with open(_file) as f:
                 times = {time_type: float(line) for line, time_type in zip(f, standards.UnixTimeCodes)}
-            task = benchmarking.Time(self.process, "Array {}".format(i), times)
-            experiment.add_benchmark(task)
+            task = benchmarking.Time(self.purpose, times, "Array {}".format(i))
+            self.experiment.add_benchmark(task)
 
     def collect_garbage(self):
         if os.path.isdir(self.directory):
@@ -95,14 +95,13 @@ class PbsBatchSubmitter(object):
                 raise OSError("Unable to implement callback for job id {}".format(stdout))
             job_id = job_id_match.group()
             self.callbacks += 1
-            callback_purpose = "{} callback {}".format(self.purpose, self.callbacks)
             command = "{} {} {}".format(standards.PythonCommand, os.path.realpath(__file__), self.file)
             handle, self.callback_file = tempfile.mkstemp(dir=self.directory, prefix="callback_", suffix=".sh")
             os.close(handle)
             if self.experiment.benchmarking:
-                handle, self.callback_time_file = tempfile.mkstemp(dir=self.experiment.directory, prefix="callback_time_", suffix=".txt")
+                handle, self.callback_time_file = tempfile.mkstemp(dir=self.experiment.get_temp(), prefix="callback_time_", suffix=".txt")
                 os.close(handle)
-                self.experiment.add_time_file(self.callback_time_file, callback_purpose)
+                self.experiment.add_time_file(self.callback_time_file, status_offset=1)
             else:
                 self.callback_time_file = None
             self.save()
