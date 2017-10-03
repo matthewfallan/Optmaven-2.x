@@ -45,8 +45,7 @@ class PbsBatchSubmitter(object):
 
     def collect_times(self):
         for i, _file in enumerate(self.get_time_files()):
-            with open(_file) as f:
-                times = {time_type: float(line) for line, time_type in zip(f, standards.UnixTimeCodes)}
+            times = benchmarking.parse_time_file(_file)
             task = benchmarking.Time(self.purpose, times, "Array {}".format(i))
             self.experiment.add_benchmark(task)
 

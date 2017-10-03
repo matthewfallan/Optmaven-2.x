@@ -445,19 +445,22 @@ class OptmavenExperiment(Experiment):
                     with open(fn) as f:
                         benchmarks.append(pkl.load(f))
                 benchmarks.sort(key=benchmarking.Task.get_time_stamp)
+                tried_current_time_file = False
                 for benchmark in benchmarks:
                     try:
-                         print(benchmark.time)
-                    except AttributeError:
-                         pass
-                    #FIXME
-                    d = benchmark.to_dict()
-                    writer.writerow(d)
-                    if isinstance(benchmark, benchmarking.Time):
-                        for field in standards.UnixTimeCodes:
-                            totals[field] += d[field]
-                    elif isinstance(benchmark, benchmarking.DriveUsage):
-                        totals["Drive Usage"] = max(d["Drive Usage"], totals["Drive Usage"])
+                        d = benchmark.to_dict()
+                    except benchmarking.BlankTimeFileError:
+                        # Expect to find exactly one blank time file: the one measuring the current process.
+                        if tried_current_time_file:
+                            raise ValueError("Found two blank time files.")
+                        tried_current_time_file = True
+                    else:
+                        writer.writerow(d)
+                        if isinstance(benchmark, benchmarking.Time):
+                            for field in standards.UnixTimeCodes:
+                                totals[field] += d[field]
+                        elif isinstance(benchmark, benchmarking.DriveUsage):
+                            totals["Drive Usage"] = max(d["Drive Usage"], totals["Drive Usage"])
                 # Remove the temporary directory, then add the final drive usage.
                 #FIXME self.safe_rmtree(self.temp)
                 du = self.add_drive_usage().to_dict()

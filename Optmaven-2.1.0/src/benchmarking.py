@@ -6,6 +6,10 @@ import subprocess
 import standards
 
 
+class BlankTimeFileError(IOError):
+    pass
+
+
 class Task(object):
     def __init__(self, purpose, detail=None, time_stamp=None):
         self.purpose = purpose
@@ -66,4 +70,9 @@ class DriveUsage(Task):
 
 def parse_time_file(_file):
     with open(_file) as f:
-        return {time_type: float(line) for line, time_type in zip(f, standards.UnixTimeCodes)}
+        lines = f.readlines()
+    if len(lines) == 0:
+        raise BlankTimeFileError("Found blank time file: {}".format(_file))
+    if len(lines) != len(standards.UnixTimeCodes):
+        raise ValueError("Need {} lines in time file {}".format(len(standards.UnixTimeCodes), _file))
+    return {time_type: float(line) for line, time_type in zip(lines, standards.UnixTimeCodes)}
