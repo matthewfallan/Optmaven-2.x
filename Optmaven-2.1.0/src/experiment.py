@@ -93,9 +93,10 @@ class Experiment(object):
         task = benchmarking.TimeFile(_file, purpose)
         self.add_benchmark(task)
 
-    def add_drive_usage(self):
+    def add_drive_usage(self, _file=True):
         du = benchmarking.DriveUsage(self)
-        self.add_benchmark(du)
+        if _file:
+            self.add_benchmark(du)
         return du
 
     def ask(self, attribute, number=False, valid_path=False):
@@ -172,10 +173,10 @@ class Experiment(object):
         return molecule
 
     def safe_rmtree(self, directory):
-        if standards.is_subdirectory(directory, self.get_temp()):
+        if standards.is_subdirectory(directory, self.directory):
             standards.safe_rmtree(directory)
         else:
-            raise OSError("{} cannot remove directory trees outside of {}".format(self.name, self.get_temp()))
+            raise OSError("{} cannot remove directory trees outside of {}".format(self.name, self.directory))
 
     def purge_temp(self):
         standards.safe_rmtree(self.temp)
@@ -463,13 +464,12 @@ class OptmavenExperiment(Experiment):
                             totals["Drive Usage"] = max(d["Drive Usage"], totals["Drive Usage"])
                 # Remove the temporary directory, then add the final drive usage.
                 self.safe_rmtree(self.temp)
-                du = self.add_drive_usage().to_dict()
+                du = self.add_drive_usage(_file=False).to_dict()
                 writer.writerow(du)
                 totals["Drive Usage"] = max(du["Drive Usage"], totals["Drive Usage"])
                 writer.writerow(totals)
         else:
             self.safe_rmtree(self.temp) 
-        self.change_status()
 
     def relax_antigen(self, args):
         antigen_molecule = molecules.Molecule(self.antigen_input_name, self.antigen_input_file, self)

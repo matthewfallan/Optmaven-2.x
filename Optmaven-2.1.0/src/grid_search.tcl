@@ -46,31 +46,18 @@ set zAngleLevels [split [readAttribute $gridFile "zAngle" 1]]
 # Select the epitope.
 set epitope [atomselect 0 [readFile $epitopeFile]]
 
-# Determine the maximum z coordinate of any atom in either antibody.
-set maxZH [lindex [measure minmax $IgH] {1 2}]
-set maxZK [lindex [measure minmax $IgK] {1 2}]
-set maxZIg [expr max($maxZH, $maxZK)]
-
-
 # Test all positions and record those that do not clash.
 set positions [open $positionsFile "w"]
 foreach zAngle $zAngleLevels {
     foreach z $zLevels {
-        # Determine the minimum z coordinate of any atom in the antigen.
-        set minZAg [lindex [measure minmax $Ag] {0 2}]
-        # Select all of the atoms in the antigen with z coordinates within the cutoff z coordinate of either antibody.
-        set AgNear [atomselect 0 "z < $maxZIg + $clashCutoff"]
-        # Select the atoms in the antibody with z coordinates within the cutoff z coordinates of the antigen.
-        set IgHNear [atomselect 1 "z > $minZAg - $clashCutoff"]
-        set IgKNear [atomselect 2 "z > $minZAg - $clashCutoff"]
         foreach y $yLevels {
             foreach x $xLevels {
                 # Move the antigen to the correct position.
                 repositionAntigen $Ag $epitope $antigenFirstChain $zAngle $x $y $z
                 # Count the number of clashes between the antigen and the antibody.
-                set clashes [llength [lindex [measure contacts $clashCutoff $AgNear $IgHNear] 0]]
+                set clashes [llength [lindex [measure contacts $clashCutoff $Ag $IgH] 0]]
                 if {$clashes <= $clashesPermitted} {
-                    set clashes [llength [lindex [measure contacts $clashCutoff $AgNear $IgKNear] 0]]
+                    set clashes [llength [lindex [measure contacts $clashCutoff $Ag $IgK] 0]]
                     if {$clashes <= $clashesPermitted} {
                         # Write non-clashing positions to the file.
                         puts $positions "$zAngle $x $y $z"
