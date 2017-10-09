@@ -24,14 +24,14 @@ _MAX_RANDOM_RESIDUE = 2**30 - 1
 
 
 class Molecule(object):
-    def __init__(self, name, file_, experiment, exclude_hetero_ask=False):
+    def __init__(self, name, file_, experiment, exclude_hetero=standards.HetAtmInclude):
         if name != "".join(name.split()) or os.path.sep in name:
             raise ValueError("Molecule names may not contain whitespace or {}.".format(os.path.sep))
         self.name = name
         if not isinstance(file_, str):
             raise TypeError("Expected str, got {}.".format(type(file_)))
         self.file = file_
-        self.exclude_hetero_ask = exclude_hetero_ask
+        self.exclude_hetero = exclude_hetero
         self.excluded_residue_ids = None
         self.experiment = experiment
         self.dims = standards.AtomCoordOrder
@@ -44,14 +44,21 @@ class Molecule(object):
         models = Selection.unfold_entities(structure, "M")
         if len(models) != 1:
             raise NotImplementedError("Optmaven cannot currently handle structures with {} models.".format(len(models)))
-        if self.exclude_hetero_ask and self.excluded_residue_ids is None:
+        if self.exclude_hetero in [standards.HetAtmAsk, standards.HetAtmExclude] and self.excluded_residue_ids is None:
             self.excluded_residue_ids = dict()
             for chain in Selection.unfold_entities(models[0], "C"):
                 hetero_residues = [residue for residue in chain if residue.get_id()[0] != " "]
                 hetero_residue_ids = [residue.get_id() for residue in hetero_residues]
                 if len(hetero_residue_ids) > 0:
-                    disp("Excluding hetero-residues from chain {}.".format(chain.get_id()))
-                    self.excluded_residue_ids[chain.get_id()] = set(user_input.select_from_list("Please select hetero-residues to exclude from {}: ".format(self.name), hetero_residue_ids, names=map(residue_code, hetero_residues)))
+                    if self.exclude_hetero == standards.HetAtmAsk:
+                        disp("Excluding hetero-residues from chain {}.".format(chain.get_id()))
+                        self.excluded_residue_ids[chain.get_id()] = set(user_input.select_from_list("Please select hetero-residues to exclude from {}: ".format(self.name), hetero_residue_ids, names=map(residue_code, hetero_residues)))
+                    elif self.exclude_hetero == standards.HetAtmExclude:
+                        self.excluded_residue_ids[chain.get_id()] = hetero_residue_ids
+                    else:
+                        raise ValueError("Bad value for heteroatom exclusion: {}".format(self.exclude_hetero))
+        elif self.exclude_hetero not in standards.HetAtmOptions:
+            raise ValueError("Bad value for heteroatom exclusion: {}".format(self.exclude_hetero))
         if self.excluded_residue_ids is not None:
             for chain in Selection.unfold_entities(models[0], "C"):
                 exclude = self.excluded_residue_ids.get(chain.get_id())
@@ -280,6 +287,11 @@ class ProtoAntibody(object):
         self_cdrs = sorted(self.parts.keys())
         if self_cdrs != all_cdrs:
             raise ValueError("Expected CDRs {}, got {}".format(",".join(all_cdrs), ",".join(self_cdrs)))
+        # Ensure there are no clashes between MAPs parts.
+        [maps.clashing(part1, part2) for part1, part2 in itertools.combinations(self.list_parts(), 2)]
+
+    def list_parts(self):
+        return [maps.join(cdr, number) for cdr, number in self.parts.items()]
 
     def translate_cdr(self, cdr):
         chain, region = maps.split_cdr(cdr)

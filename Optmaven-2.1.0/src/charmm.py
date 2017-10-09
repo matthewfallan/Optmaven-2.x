@@ -82,9 +82,10 @@ class CharmmProc(object):
                 "close unit 10"])
         self.lines.extend(ic_fill())
 
-    def calculate_energy(self):
+    def calculate_energy(self, solvation=True):
         self.energy_file = os.path.join(self.directory, "energy.dat")
         self.lines.extend(["! Calculate the energy.",
+            energy_line(self.experiment, solvation),
             "ener",
             "set tot ?ener",
             "open write card unit 10 name {}".format(os.path.basename(self.energy_file)),
@@ -92,10 +93,10 @@ class CharmmProc(object):
             "*@tot",
             "close unit 10"])
 
-    def relax(self):
+    def relax(self, solvation):
         self.lines.extend(["! Carry out an energy minimization",
             "nbon nbxm 5",
-            energy_line(self.experiment),
+            energy_line(self.experiment, solvation),
             "mini abnr nstep {} nprint 50 -".format(self.experiment.charmm_iterations),
             "tolgrd 0.01 tolenr 0.0001 tolstp 0.00"])
 
@@ -136,12 +137,16 @@ class CharmmProc(object):
 
 
 class Energy(CharmmProc):
+    def __init__(self, experiment, molecule_list, solvation=True):
+        CharmmProc.__init__(self, experiment, molecule_list)
+        self.solvation = solvation
+
     def __enter__(self):
         CharmmProc.__enter__(self)
         self.begin_script()
         self.load_input_files()
         self.load_molecules()
-        self.calculate_energy()
+        self.calculate_energy(solvation=self.solvation)
         self.end_script()
         self.charmm()
         with open(self.energy_file) as f:
@@ -153,22 +158,23 @@ class Energy(CharmmProc):
 
 
 class InteractionEnergy(CharmmProc):
-    def __init__(self, experiment, molecule_list):
+    def __init__(self, experiment, molecule_list, solvation=True):
         CharmmProc.__init__(self, experiment, molecule_list)
         if len(self.molecules) == 2:
             self.mol1, self.mol2 = self.molecules
         else:
             raise ValueError("An interaction energy calculation needs exactly two molecules.")
+        self.solvation = solvation
 
     def __enter__(self):
         CharmmProc.__enter__(self)
-        with Energy(self.experiment, [self.mol1]) as e1:
-            energy1 = e1.energy
-        with Energy(self.experiment, [self.mol2]) as e2:
-            energy2 = e2.energy
-        with Energy(self.experiment, self.molecules) as e12:
-            energy12 = e12.energy
-        self.energy = energy12 - (energy1 + energy2)
+        with Energy(self.experiment, [self.mol1], solvation=self.solvation) as e1:
+            self.energy1 = e1.energy
+        with Energy(self.experiment, [self.mol2], solvation=self.solvation) as e2:
+            self.energy2 = e2.energy
+        with Energy(self.experiment, self.molecules, solvation=self.solvation) as e12:
+            self.energy12 = e12.energy
+        self.energy = self.energy12 - (self.energy1 + self.energy2)
         return self
 
 
@@ -182,7 +188,10 @@ class Relaxation(CharmmProc):
         self.begin_script()
         self.load_input_files()
         self.load_molecules()
-        self.relax()
+        # Relaxations with solvation can crash if there are steric clashes. Relax without solvation first to resolve any clashes, then relax again with solvation if needed.
+        self.relax(solvation=False)
+        if standards.CharmmSolvationTerm in self.experiment.charmm_energy_terms:
+            self.relax(solvation=True)
         self.output_molecules()
         self.end_script()
         self.charmm()
@@ -197,7 +206,7 @@ class Relaxation(CharmmProc):
         CharmmProc.__exit__(self, exc_type, exc_value, traceback)
 
 
-def introduction(purpose = None):
+def introduction(purpose=None):
     """Create a header to start a CHARMM script."""
     return ["wrnl -2",
         "!prnl -2",
@@ -213,10 +222,25 @@ def ic_fill():
         "hbuild"]
 
 
-def energy_line(experiment):
+def energy_line(experiment, solvation=True):
     """Generate a string saying how energy should be calculated in CHARMM."""
-    terms = experiment.charmm_energy_terms
-    line = "skip all excl {}".format(" ".join(terms))
+    terms = list(experiment.charmm_energy_terms)
+    # If solvation is not being used, remove solvation from the terms list, if it exists.
+    if not solvation:
+        try:
+            terms.pop(terms.index(standards.CharmmSolvationTerm))
+        except ValueError:
+            pass
+    # If Generalized Born solvation is used, specify solvation parameters.
+    if standards.CharmmSolvationTerm in terms:
+        line = """GBMV BETA -20 EPSILON 80 DN 1.0 watr 1.4 GEOM -
+    TOL 1e-8 BUFR 0.5 Mem 10 CUTA 20 HSX1 -0.125 HSX2 0.25 -
+    ALFRQ 1 EMP 0.25 P4 0.0 P6 8.0 P3 0.70 ONX 1.9 OFFX 2.1 -
+    WTYP 2 NPHI 38 SHIFT -0.102 SLOPE 0.9085 CORR 1
+"""
+    else:
+        line = ""
+    line += "skip all excl {}".format(" ".join(terms))
     return line
 
 

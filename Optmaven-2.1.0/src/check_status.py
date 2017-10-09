@@ -5,7 +5,9 @@ import console
 import standards
 
 
-console.disp("{:<39} {}".format("Experiment", "Status"))
+console.clear()
+console.disp("{:<39} {:<39}".format("EXPERIMENT", "STATUS"))
+console.disp("-" * 80)
 for experiment in os.listdir(standards.ExperimentsDirectory):
     directory = os.path.join(standards.ExperimentsDirectory, experiment)
     errors = os.path.join(directory, "errors.txt")
@@ -13,16 +15,16 @@ for experiment in os.listdir(standards.ExperimentsDirectory):
     summary = os.path.join(directory, "Summary.txt")
     results = os.path.join(directory, "Results.csv")
     if os.path.isfile(errors):
-        status = "ERROR"
+        status = "ERROR: see errors.txt"
     else:
-        try:
-            with open(pickle) as f:
-                exp = pkl.load(f)
-        except IOError:
-            if all([os.path.isfile(x) for x in [summary, results]]):
-                status = "Completed"
-            else:
-                raise IOError("Cannot find results and summary or pickle file for Experiment {}".format(experiment))
+        if all([os.path.isfile(x) for x in [summary, results]]):
+            status = "Completed"
         else:
-            task, status = exp.get_task(exp.status)
+            try:
+                with open(pickle) as f:
+                    exp = pkl.load(f)
+            except IOError:
+                status = "ERROR: missing pickle, results, summary, and error files"
+            else:
+                task, status = exp.get_task(exp.status)
     console.disp("{:<39} {}".format(experiment, status))

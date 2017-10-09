@@ -52,6 +52,11 @@ for gap in gaps:
             for line in open(coords_files[gap])}
 
 
+def validate_part(part):
+    if part not in parts:
+        raise ValueError("Bad MAPs part: {}".format(part))
+
+
 def join(cdr, number, check_new_part=True):
     """ Join a tuple X, n into a part X_n """
     part = "{}{}{}".format(cdr, sep, number)
@@ -135,7 +140,7 @@ def get_cdr_names(light_chain):
     return [cdr for cdr in cdrs if get_chain(cdr) in heavy_chains + [light_chain]]
 
 
-def get_integer_cuts():
+def get_integer_cuts(expanded_format=True):
     cuts = list()
     with open(standards.MapsIntegerCutsFile) as f:
         for line in f:
@@ -145,15 +150,29 @@ def get_integer_cuts():
             cut = line.split()
             try:
                 cdr1, num1, cdr2, num2 = cut
+                part1 = join(cdr1, num1)
+                part2 = join(cdr2, num2)
             except ValueError:
-                raise ValueError("Cannot read integer cut: {}".format(line))
-            part1 = "{}_{}".format(cdr1, num1)
-            part2 = "{}_{}".format(cdr2, num2)
-            for part in [part1, part2]:
-                if part not in parts:
-                    raise ValueError("Bad part in integer cut file: {}".format(part))
-            cuts.append(cut)
+                raise ValueError("Bad integer cut: {}".format(line))
+            if expanded_format:
+                cuts.append(cut)
+            else:
+                cuts.append((part1, part2))
     return cuts
+
+
+maps_clashes = set(get_integer_cuts(expanded_format=False))
+def clashing(part1, part2, error=False):
+    """ Check if two MAPs parts clash. """
+    validate_part(part1)
+    validate_part(part2)
+    if (part1, part2) in maps_clashes or (part2, part1) in maps_clashes:
+        if error:
+            raise ValueError("MAPs parts clash: {}, {}".format(part1, part2))
+        else:
+            return True
+    else:
+        return False
 
 
 def select_parts(energies, clash_cuts, solution_cuts):

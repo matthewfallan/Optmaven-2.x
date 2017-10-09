@@ -65,6 +65,12 @@ AllowedPathCharacters = string.letters + string.digits + "_."
 # Experimental configuration.
 DefaultNumberOfDesigns = 50
 
+# Argument standards.
+HetAtmExclude = "yes"
+HetAtmInclude = "no"
+HetAtmAsk = "ask"
+HetAtmOptions = [HetAtmAsk, HetAtmInclude, HetAtmExclude]
+
 # Default PBS settings.
 DefaultWalltime = 86399  # 23 hours, 59 minutes, 59 seconds
 DefaultBatchSize = 1
@@ -101,7 +107,8 @@ DefaultParameterFile = os.path.join(InputsDirectory, "par_all27_prot_na.prm")
 DefaultSolvationFile = os.path.join(InputsDirectory, "solvation.dat")
 
 # CHARMM configuration.
-DefaultCharmmEnergyTerms = ['angl', 'bond', 'dihe', 'elec', 'impr', 'urey', 'vdw']
+CharmmSolvationTerm = "gbener"
+DefaultCharmmEnergyTerms = ['angl', 'bond', 'dihe', 'elec', 'impr', 'urey', 'vdw', CharmmSolvationTerm]
 DefaultCharmmIterations = 5000
 CharmmCommand = "/gpfs/group/cdm/c34b1.xj.gnu/exec/gnu/charmm.serial.xlarge" 
 

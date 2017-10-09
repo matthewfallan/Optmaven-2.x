@@ -54,11 +54,12 @@ class VmdProc(object):
             raise RuntimeError("Running VMD with the following command has failed:\n{}".format(command))
 
     def collect_garbage(self):
-        try:
-            os.remove(self.vmd_functions_file)
-        except OSError:
-            pass
-        self.experiment.safe_rmtree(self.directory)
+        if not self.experiment.args.keeptemp:
+            try:
+                os.remove(self.vmd_functions_file)
+            except OSError:
+                pass
+            self.experiment.safe_rmtree(self.directory)
 
     def write_epitope_file(self):
         self.epitope_file = os.path.join(self.directory, "epitope.txt")

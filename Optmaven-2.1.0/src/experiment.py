@@ -1,5 +1,6 @@
 """ This module defines the Experiment class of OptMAVEn. """
 
+import argparse
 from collections import defaultdict, OrderedDict
 import cPickle as pkl
 import csv
@@ -28,8 +29,11 @@ import user_input
 
 
 class Experiment(object):
-    def __init__(self):
+    def __init__(self, args=None):
         self.purpose = "Initialization"
+        if args is None:
+            args = ExperimentArgParser().parse_args()
+        self.args = args
         clear()
         do = True
         while do:
@@ -164,7 +168,7 @@ class Experiment(object):
         while do:
             molecule_file = user_input.get_file(prompt, standards.PDBDirectory, fetch_pdb=True)
             try:
-                molecule = molecules.Molecule(name, molecule_file, self, exclude_hetero_ask=True)
+                molecule = molecules.Molecule(name, molecule_file, self, exclude_hetero=self.args.exclude_hetero)
                 molecule.get_structure()
             except Exception as error:
                 disp("There was an error with the PDB import:\n{}".format(error.message))
@@ -172,14 +176,27 @@ class Experiment(object):
                 do = False
         return molecule
 
+    def select_epitope_residues(self, chains):
+        self.epitope_residue_ids = dict()
+        for chain in chains:
+            self.epitope_residue_ids[chain.get_id()] = user_input.select_from_list("Please select the epitope residues from chain {}: ".format(chain.get_id()), [residue.get_id() for residue in chain], 1, None, map(molecules.residue_code, chain))
+
+    def write_antigen_input_residues(self, entire_input_structure):
+        self.antigen_input_name = "antigen_input_file"
+        self.antigen_input_file = os.path.join(self.structure_directory, os.path.basename("antigen_input.pdb"))
+        self.antigen_input_molecule = molecules.Molecule(self.antigen_input_name, self.antigen_input_file, self)
+        selector = molecules.SelectChains(self.antigen_chain_ids)
+        self.antigen_input_molecule.write_pdb(entire_input_structure, selector=selector)
+
     def safe_rmtree(self, directory):
-        if standards.is_subdirectory(directory, self.directory):
-            standards.safe_rmtree(directory)
-        else:
-            raise OSError("{} cannot remove directory trees outside of {}".format(self.name, self.directory))
+        if not self.args.keeptemp:
+            if standards.is_subdirectory(directory, self.directory):
+                standards.safe_rmtree(directory)
+            else:
+                raise OSError("{} cannot remove directory trees outside of {}".format(self.name, self.directory))
 
     def purge_temp(self):
-        standards.safe_rmtree(self.temp)
+        standards.safe_rmtree(self.get_temp())
 
     def completed(self, args):
         disp("{} has finished running. Please view the results in {}".format(self.name, self.directory))
@@ -187,8 +204,8 @@ class Experiment(object):
 
 class InteractionExperiment(Experiment):
     """ This Experiment simply calculates the interaction energy between two groups of chains, performs a relaxation, then calculates the energy again. """
-    def __init__(self):
-        Experiment.__init__(self)
+    def __init__(self, args=None):
+        Experiment.__init__(self, args)
         self.topology_files = [standards.DefaultTopologyFile]
         self.parameter_files = [standards.DefaultParameterFile]
         self.solvation_files = [standards.DefaultSolvationFile]
@@ -213,12 +230,16 @@ class InteractionExperiment(Experiment):
         return [(self.relaxation, "Relaxation")][status]
 
     def relaxation(self, args):
+        self.energy_fields = ["Condition", "Complex", "Group 1", "Group 2", "Interaction"]
         garbage = list()
         # Calculate interaction energy before relaxation.
         group1, group2 = self.molecule.disassemble_into_chains(self.chain_groups)
-        self.energies = dict()
-        with charmm.InteractionEnergy(self, [group1, group2]) as e:
-            self.energies["Unrelaxed"] = e.energy
+        with charmm.InteractionEnergy(self, [group1, group2], solvation=False) as e:
+            self.energies_unrelaxed = {"Condition": "Unrelaxed"}
+            self.energies_unrelaxed["Group 1"] = e.energy1
+            self.energies_unrelaxed["Group 2"] = e.energy2
+            self.energies_unrelaxed["Complex"] = e.energy12
+            self.energies_unrelaxed["Interaction"] = e.energy
             if self.benchmarking:
                 self.add_drive_usage()
         # Relax the complex.
@@ -227,8 +248,12 @@ class InteractionExperiment(Experiment):
         # Calculate interaction energy after relaxation.
         group1, group2 = self.molecule.disassemble_into_chains(self.chain_groups)
         garbage.extend([group1.file, group2.file])
-        with charmm.InteractionEnergy(self, [group1, group2]) as e:
-            self.energies["Relaxed"] = e.energy
+        with charmm.InteractionEnergy(self, [group1, group2], solvation=True) as e:
+            self.energies_relaxed = {"Condition": "Relaxed"}
+            self.energies_relaxed["Group 1"] = e.energy1
+            self.energies_relaxed["Group 2"] = e.energy2
+            self.energies_relaxed["Complex"] = e.energy12
+            self.energies_relaxed["Interaction"] = e.energy
             if self.benchmarking:
                 self.add_drive_usage()
         for fn in garbage:
@@ -251,14 +276,99 @@ class InteractionExperiment(Experiment):
             f.write("\n".join(["{}: {}".format(field, value) for field, value in summary]))
         self.results_file = os.path.join(self.directory, "Results.csv")
         with open(self.results_file, "w") as f:
-            writer = csv.DictWriter(f, ["Unrelaxed", "Relaxed"])
+            writer = csv.DictWriter(f, self.energy_fields)
             writer.writeheader()
-            writer.writerow(self.energies)
+            writer.writerow(self.energies_unrelaxed)
+            writer.writerow(self.energies_relaxed)
 
+
+class AntibodyInteractionExperiment(InteractionExperiment):
+    """ This Experiment constructs an antibody-antigen complex given an antigen, an antigen position, and six MAPs parts; then it calculates the interaction energy, relaxes the complex, and recalculates the energy. """
+    def __init__(self, args=None):
+        Experiment.__init__(self, args)
+        self.topology_files = [standards.DefaultTopologyFile]
+        self.parameter_files = [standards.DefaultParameterFile]
+        self.solvation_files = [standards.DefaultSolvationFile]
+        self.charmm_energy_terms = standards.DefaultCharmmEnergyTerms
+        self.charmm_iterations = standards.DefaultCharmmIterations
+        self.walltime = standards.DefaultWalltime
+        self.antigen = self.get_molecule("antigen_input", "Please enter the file of the antigen for {}: ".format(self.name))
+        self.antigen_input_file = self.antigen.file
+        # Select antigen chains.
+        antigen_chains_all = {chain.get_id(): chain for chain in self.antigen.get_chains()}
+        antigen_chains_selected = user_input.select_from_list("Please select the chain(s) for the antigen: ", antigen_chains_all, min_number=1)
+        self.antigen_chain_ids = [chain.get_id() for chain in antigen_chains_selected]
+        self.select_epitope_residues(antigen_chains_selected)
+        # Create the antigen-antibody complex.
+        self.antigen_position = [self.ask(pos, number=True) for pos in standards.PositionOrder]
+        do = True
+        while do:
+            try:
+                parts = [self.ask("{} CDR".format(cdr)) for cdr in standards.MapsNamesakeCdrs]
+                self.maps_parts = dict()
+                for part in parts:
+                    cdr, number = maps.split(part)
+                    self.maps_parts[cdr] = number
+                proto = self.get_proto_antibody()
+            except Exception as e:
+                disp(e.message)
+            else:
+                do = False
+        self.status = 0
+        self.save_and_submit()
+
+    def create_report(self):
+        summary = [
+            ("Experiment name", self.name),
+            ("Antigen input file", self.antigen_input_file),
+            ("Antigen chains", ", ".join(self.chain_groups[0])),
+            ("Antibody chains", "; ".join(self.chain_groups[1])),
+            ("Antigen position", ", ".join(map(str, self.antigen_position))),
+            ("MAPs parts", ", ".join([maps.join(cdr, number) for cdr, number in self.maps_parts.items()]))
+        ]
+        self.summary_file = os.path.join(self.directory, "Summary.txt")
+        with open(self.summary_file, "w") as f:
+            f.write("\n".join(["{}: {}".format(field, value) for field, value in summary]))
+        self.results_file = os.path.join(self.directory, "Results.csv")
+        with open(self.results_file, "w") as f:
+            writer = csv.DictWriter(f, self.energy_fields)
+            writer.writeheader()
+            writer.writerow(self.energies_unrelaxed)
+            writer.writerow(self.energies_relaxed)
+
+    def get_proto_antibody(self):
+        return molecules.ProtoAntibody(self.maps_parts, self.antigen_position, energy=None)
+
+    def get_task(self, status):
+        return [
+            (self.antigen_relaxation, "Antigen relaxation and positioning"),
+            (self.relaxation, "Relaxation")
+        ][status]
+
+    def antigen_relaxation(self, args):
+        self.write_antigen_input_residues(self.antigen.get_structure())
+        antigen_molecule = molecules.Molecule(self.antigen_input_name, self.antigen_input_file, self)
+        self.antigen_relaxed_name = "relaxed_antigen"
+        self.antigen_relaxed_file = os.path.join(self.structure_directory, "antigen_relaxed.pdb")
+        antigen_molecule.relax(self.antigen_relaxed_file)
+        self.epitope_zmin_file = self.antigen_relaxed_file
+        antigen_molecule.position_antigen(0, 0, 0, 0, in_place=True)
+        self.create_complex()
+
+    def create_complex(self):
+        ab_name = "antibody-antigen_compex"
+        self.molecule = self.get_proto_antibody().to_molecule(ab_name, self.epitope_zmin_file, self)
+        self.antibody_chain_ids = [chain.get_id() for chain in self.molecule.get_chains() if chain.get_id() not in self.antigen_chain_ids]
+        # Partition the chains into antigen and antibody.
+        self.chain_groups = list()
+        self.chain_groups.append(self.antigen_chain_ids)
+        self.chain_groups.append(self.antibody_chain_ids)
+        self.relaxation(None)
+        
 
 class ResidueContactExperiment(Experiment):
-    def __init__(self):
-        Experiment.__init__(self)
+    def __init__(self, args=None):
+        Experiment.__init__(self, args)
         self.molecule = self.get_molecule("input", "Please enter the name of the molecule for {}: ".format(self.name))
         self.chain_ids = [chain.get_id() for chain in self.molecule.get_chains()]
         chains_left = list(self.chain_ids)
@@ -323,8 +433,8 @@ class ResidueContactExperiment(Experiment):
 
 class TransformMoleculeExperiment(Experiment):
     """ This is a simple Experiment that just translates and rotates a molecule. """
-    def __init__(self):
-        Experiment.__init__(self)
+    def __init__(self, args=None):
+        Experiment.__init__(self, args)
         self.molecule = self.get_molecule("input", "Please enter the name of the molecule for {}: ".format(self.name))
         # Get the translation vector.
         do = True
@@ -356,8 +466,8 @@ class TransformMoleculeExperiment(Experiment):
 
 
 class OptmavenExperiment(Experiment):
-    def __init__(self):
-        Experiment.__init__(self)
+    def __init__(self, args=None):
+        Experiment.__init__(self, args)
         # Ask whether to customize advanced settings.
         if user_input.get_yn("Would you like to customize Optmaven settings? "):
             raise NotImplementedError("You cannot customize settings at this time.")
@@ -407,9 +517,19 @@ class OptmavenExperiment(Experiment):
     def create_report(self, args):
         summary = [
             ("Experiment name", self.name),
+            ("Topology files", ", ".join(self.topology_files)),
+            ("Parameter files", ", ".join(self.parameter_files)),
+            ("Solvation files", ", ".join(self.solvation_files)),
+            ("CHARMM energy terms", ", ".join(self.charmm_energy_terms)),
+            ("CHARMM iterations", str(self.charmm_iterations)),
             ("Antigen input file", self.entire_input_file),
             ("Antigen chains", ", ".join(self.antigen_chain_ids)),
-            ("Epitope residues", "; ".join([", ".join(["{}-{}".format(chain, "".join(map(str, resid))) for resid in residues]) for chain, residues in self.epitope_residue_ids.items()])),
+            ("Epitope residues", "; ".join(["{}: {}".format(chain, ", ".join(["".join(map(str, resid)) for resid in residues])) for chain, residues in self.epitope_residue_ids.items()])),
+            (standards.zAngleLabel, ", ".join(map(str, self.grid_zAngle))),
+            (standards.xLabel, ", ".join(map(str, self.grid_x))),
+            (standards.yLabel, ", ".join(map(str, self.grid_y))),
+            (standards.zLabel, ", ".join(map(str, self.grid_z))),
+            ("Clash cutoff", self.clash_cutoff),
             ("Total positions", len(self.positions)),
             ("Selected designs", self.select_number)
         ]
@@ -687,7 +807,7 @@ class OptmavenExperiment(Experiment):
         # Calculate interaction energy before relaxation.
         antigen, antibody = _complex.disassemble_into_chains([_complex.antigen_chains, _complex.antibody_chains])
         garbage.extend([antigen.file, antibody.file])
-        with charmm.InteractionEnergy(self, [antigen, antibody]) as e:
+        with charmm.InteractionEnergy(self, [antigen, antibody], solvation=False) as e:
             unrelaxed_energy = e.energy
             if self.benchmarking:
                 self.add_drive_usage()
@@ -696,7 +816,7 @@ class OptmavenExperiment(Experiment):
         # Calculate interaction energy after relaxation.
         antigen, antibody = _complex.disassemble_into_chains([_complex.antigen_chains, _complex.antibody_chains])
         garbage.extend([antigen.file, antibody.file])
-        with charmm.InteractionEnergy(self, [antigen, antibody]) as e:
+        with charmm.InteractionEnergy(self, [antigen, antibody], solvation=True) as e:
             relaxed_energy = e.energy
             if self.benchmarking:
                 self.add_drive_usage()
@@ -711,7 +831,7 @@ class OptmavenExperiment(Experiment):
         while do:
             self.entire_input_file = user_input.get_file("Please name the file containing the antigen: ", standards.PDBDirectory, fetch_pdb=True)
             try:
-                entire_input_model = molecules.Molecule(self.entire_input_name, self.entire_input_file, self, exclude_hetero_ask=True).get_model()
+                entire_input_model = molecules.Molecule(self.entire_input_name, self.entire_input_file, self, exclude_hetero=self.args.exclude_hetero).get_model()
             except Exception as error:
                 disp("There was an error with the PDB import:\n{}".format(error.message))
             else:
@@ -731,19 +851,6 @@ class OptmavenExperiment(Experiment):
                 do = False
         return selected_chains
 
-    def select_epitope_residues(self, chains):
-        self.epitope_residue_ids = dict()
-        for chain in chains:
-            self.epitope_residue_ids[chain.get_id()] = user_input.select_from_list("Please select the epitope residues from chain {}: ".format(chain.get_id()), [residue.get_id() for residue in chain], 1, None, map(molecules.residue_code, chain))
-        #return antigen_input_residues
-    
-    def write_antigen_input_residues(self, entire_input_structure):
-        self.antigen_input_name = "antigen_input_file"
-        self.antigen_input_file = os.path.join(self.structure_directory, os.path.basename("antigen_input.pdb"))
-        self.antigen_input_molecule = molecules.Molecule(self.antigen_input_name, self.antigen_input_file, self)
-        selector = molecules.SelectChains(self.antigen_chain_ids)
-        self.antigen_input_molecule.write_pdb(entire_input_structure, selector=selector)
-    
     def get_molecules_list(self):
         status = self.status
         if status == 1:
@@ -796,8 +903,8 @@ class OptmavenResult(object):
 
 
 class CreateAntigenAntibodyComplexExperiment(OptmavenExperiment):
-    def __init__(self):
-        Experiment.__init__(self)
+    def __init__(self, args):
+        Experiment.__init__(self, args)
         entire_input_model = OptmavenExperiment.get_entire_input_model(self)
         antigen_input_chains = OptmavenExperiment.select_antigen_input_chains(self, entire_input_model)
         self.antigen_chain_ids = [chain.get_id() for chain in antigen_input_chains]
@@ -844,6 +951,24 @@ class CreateAntigenAntibodyComplexExperiment(OptmavenExperiment):
         clear()
         self.report_directory()
 
+
+class ExperimentArgParser(argparse.ArgumentParser):
+    def __init__(self):
+        argparse.ArgumentParser.__init__(self)
+        self.add_argument("--antigen", help="input antigen file")
+        self.add_argument("--epitope", help="comma-separated list of epitope residues")
+        self.add_argument("--exclude_hetero", help="specify whether to have [no] hetatm exclusion, [yes] exclude hetatms, or [ask] each time")
+        benchtemp = self.add_mutually_exclusive_group()
+        benchtemp.add_argument("--benchmark", help="turn benchmarking [on] or [off]")
+        benchtemp.add_argument("--keeptemp", help="do dot remove maps energies or part files", action="store_true")
+
+    def parse_args(self):
+        args = argparse.ArgumentParser.parse_args(self)
+        if args.exclude_hetero is None:
+            args.exclude_hetero = standards.HetAtmAsk
+        if args.exclude_hetero not in standards.HetAtmOptions:
+            raise ValueError("Bad value for exclude_hetero: {}".format(args.exclude_hetero))
+        return args
 
 def info_format(field, value):
     return "{}\t{}".format(field, value)
