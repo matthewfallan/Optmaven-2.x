@@ -165,7 +165,7 @@ class MapsEnergies(VmdProc):
             self.psf = merge.psf
         energy_temp = os.path.join(self.directory, "energies_temp.dat")
         self.write_epitope_file()
-        self.args = [self.psf, self.pdb, self.experiment.positions_file, self.epitope_file, self.experiment.antigen_chain_ids[0], energy_temp]
+        self.args = [self.psf, self.pdb, self.experiment.positions_file, self.epitope_file, self.experiment.antigen_chain_ids[0], energy_temp, standards.NamdCommand]
         self.args.extend(self.experiment.parameter_files)
         self.script = "interaction_energies.tcl"
         self.vmd()

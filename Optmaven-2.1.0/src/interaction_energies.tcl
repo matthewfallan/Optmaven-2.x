@@ -8,7 +8,8 @@
 #        4: antigenFirstChain
 #        5: the name of the output file
 #        6: the first parameter file
-#        7: (optional) the second parameter file
+#        7: the path to the NAMD executable
+#        8: (optional) the second parameter file
 #        etc.
 
 # Load the VMD functions.
@@ -16,8 +17,8 @@ source vmd_functions.tcl
 package require namdenergy
 
 # Load the arguments.
-if {[llength $argv] < 7} {
-	puts "Usage: structure.psf coordinates.pdb positions/file.dat epitope/file.txt antigenFirstChain output/energies.dat experiment/details.txt parameter/file1.prm parameter/file2.prm (optional) ..."
+if {[llength $argv] < 8} {
+	puts "Usage: structure.psf coordinates.pdb positions/file.dat epitope/file.txt antigenFirstChain output/energies.dat experiment/details.txt path/to/namd parameter/file1.prm parameter/file2.prm (optional) ..."
 	exit 1
 }
 set inStruct [lindex $argv 0]
@@ -26,8 +27,9 @@ set positionsFile [lindex $argv 2]
 set epitopeFile [lindex $argv 3]
 set antigenFirstChain [lindex $argv 4]
 set outEnergy [lindex $argv 5]
+set NamdCommand [lindex $argv 6]
 set parameterFiles []
-for {set i 6} {$i < [llength $argv]} {incr i} {
+for {set i 7} {$i < [llength $argv]} {incr i} {
 	lappend parameterFiles [lindex $argv $i]
 }
 
@@ -67,7 +69,7 @@ while {[gets $positions p] >= 0} {
     puts "Position: $zAngle $x $y $z"
     repositionAntigen $Ag $epitope $antigenFirstChain $zAngle $x $y $z
     # Calculate the interaction energy (electrostatic and van der Waals) between the antigen and the MAPs part.
-    set energyList [lindex [namdenergy -sel $Ag $MAPsPart -elec -vdw -par $parameterFiles] 0]
+    set energyList [lindex [namdenergy -sel $Ag $MAPsPart -elec -vdw -par $parameterFiles -exe $NamdCommand] 0]
     # Read the energy from the fourth position in the list.
     set energy [lindex [split $energyList] 4]
     puts "Energy: $energy"

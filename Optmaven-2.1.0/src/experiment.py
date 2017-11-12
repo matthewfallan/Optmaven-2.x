@@ -191,7 +191,11 @@ class Experiment(object):
     def safe_rmtree(self, directory):
         if not self.args.keeptemp:
             if standards.is_subdirectory(directory, self.directory):
-                standards.safe_rmtree(directory)
+                try:
+                    standards.safe_rmtree(directory)
+                except:
+                    #FIXME: This could potentially cause silent failures when the directory should be removed but is not.
+                    pass
             else:
                 raise OSError("{} cannot remove directory trees outside of {}".format(self.name, self.directory))
 

@@ -5,4 +5,4 @@ Written by Matthew Allan of the Costas Maranas Lab, Department of Chemical Engin
 Dependencies:
 Python 2.7
 Numpy
-Biopython 1.71 or later
+Biopython 1.7

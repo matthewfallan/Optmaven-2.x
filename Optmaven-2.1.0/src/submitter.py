@@ -45,9 +45,13 @@ class PbsBatchSubmitter(object):
 
     def collect_times(self):
         for i, _file in enumerate(self.get_time_files()):
-            times = benchmarking.parse_time_file(_file)
-            task = benchmarking.Time(self.purpose, times, "Array {}".format(i))
-            self.experiment.add_benchmark(task)
+            try:
+                times = benchmarking.parse_time_file(_file)
+            except IOError:
+                pass
+            else:
+                task = benchmarking.Time(self.purpose, times, "Array {}".format(i))
+                self.experiment.add_benchmark(task)
 
     def collect_garbage(self):
         if os.path.isdir(self.directory):
@@ -109,7 +113,7 @@ class PbsBatchSubmitter(object):
             self.experiment.run_next()
 
 
-def script_initial(queue, walltime):
+def script_initial(queue, walltime, array=0):
     secs = int(walltime % 60)
     walltime_mins = int((walltime - secs) / 60)
     mins = walltime_mins % 60
@@ -118,10 +122,13 @@ def script_initial(queue, walltime):
     walltime_text = "{0:>2}:{0:>2}:{0:>2}".format(hours, mins, secs)
     destination = "/dev/null"
     lines = ["#!/bin/sh",
-             "#PBS -q {}".format(queue),
+             "#PBS -A {}".format(queue),
              "#PBS -l walltime={}".format(walltime_text),
              "#PBS -j oe",
              "#PBS -o {}".format(destination)]
+    if array > 0:
+        lines.append("#PBS -t {}-{}".format(1, array))
+    lines.append("set -euo pipefail")
     return lines
 
 
@@ -130,9 +137,7 @@ def time_command(command, time_file, time_format):
 
 
 def write_script(file_name, command, walltime, array=0):
-    lines = script_initial(standards.PbsQueue, walltime)
-    if array > 0:
-        lines.append("#PBS -t {}-{}".format(1, array))
+    lines = script_initial(standards.PbsQueue, walltime, array)
     if isinstance(command, list):
         lines.extend(command)
     else:

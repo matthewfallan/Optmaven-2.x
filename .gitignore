@@ -6,3 +6,6 @@ Optmaven-2.1.0/experiments
 
 # ignore OLD files
 *.OLD
+
+# ignore scripts
+scripts/

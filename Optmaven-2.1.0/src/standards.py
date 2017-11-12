@@ -74,7 +74,7 @@ HetAtmOptions = [HetAtmAsk, HetAtmInclude, HetAtmExclude]
 # Default PBS settings.
 DefaultWalltime = 86399  # 23 hours, 59 minutes, 59 seconds
 DefaultBatchSize = 1
-PbsQueue = "lionxf"
+PbsQueue = "open" #"cdm8_c_t_bc_default"
 PbsQsub = "qsub"
 PbsArrayId = "$PBS_ARRAYID"
 PbsJobFilePrefix = "job-"
@@ -86,7 +86,7 @@ TimeCommand = "/usr/bin/time"
 BenchmarkingFields = ["Type", "Purpose", "Detail"] + UnixTimeCodes.keys() + ["Drive Usage", "Time Stamp"]
 
 # Python settings.
-PythonCommand = "python"
+PythonCommand = "/opt/rh/python27/root/usr/bin/python"
 
 # Optmaven grid settings.
 DefaultOptmavenGrid_x = np.linspace(-5, 10, 7)
@@ -110,10 +110,11 @@ DefaultSolvationFile = os.path.join(InputsDirectory, "solvation.dat")
 CharmmSolvationTerm = "gbener"
 DefaultCharmmEnergyTerms = ['angl', 'bond', 'dihe', 'elec', 'impr', 'urey', 'vdw', CharmmSolvationTerm]
 DefaultCharmmIterations = 5000
-CharmmCommand = "/gpfs/group/cdm/c34b1.xj.gnu/exec/gnu/charmm.serial.xlarge" 
+CharmmCommand = "/gpfs/group/cdm8/default/c34b1.xj.gnu/exec/gnu/charmm.serial.xlarge" 
 
 # VMD configuration.
-VmdCommand = "vmd"
+VmdCommand = "~/bin/vmd"
+NamdCommand = "~/bin/namd2"
 VmdDisp = "-dispdev"
 VmdNoDisp = "none"
 VmdExec = "-e"
@@ -123,7 +124,7 @@ VmdArgs = "-args"
 VmdFunctions = os.path.join(SourceDirectory, "vmd_functions.tcl")
 
 # CPLEX configuration.
-CplexDirectory = "/usr/global/ilog/CPLEX_Studio124/cplex/python/x86-64_sles10_4.1"
+CplexDirectory = "/gpfs/group/cdm8/default/IPRO_Suite/modules/x86-64_sles10_4.1"
 
 # Optmaven files.
 ScaffoldChains = ["H", "K"]
