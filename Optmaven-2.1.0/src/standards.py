@@ -74,7 +74,7 @@ HetAtmOptions = [HetAtmAsk, HetAtmInclude, HetAtmExclude]
 # Default PBS settings.
 DefaultWalltime = 86399  # 23 hours, 59 minutes, 59 seconds
 DefaultBatchSize = 1
-PbsQueue = "open" #"cdm8_c_t_bc_default"
+PbsQueue = "cdm8_a_g_sc_default"
 PbsQsub = "qsub"
 PbsArrayId = "$PBS_ARRAYID"
 PbsJobFilePrefix = "job-"

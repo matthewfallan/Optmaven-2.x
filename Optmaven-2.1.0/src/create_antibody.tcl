@@ -51,7 +51,7 @@ for {set i 3} {$i < 6} {incr i} {
 }
 
 # Merge the antibody parts.
-set merged [::TopoTools::mergemols [range 0 [expr $numParts - 1] 1]]
+set merged [::TopoTools::mergemols [range 0 $numParts 1]]
 set mergedID $numParts
 
 #FIXME

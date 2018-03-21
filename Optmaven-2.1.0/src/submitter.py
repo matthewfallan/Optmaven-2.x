@@ -93,6 +93,9 @@ class PbsBatchSubmitter(object):
             call = [standards.PbsQsub, self.script_file]
             p = subprocess.Popen(call, stdout=subprocess.PIPE)
             stdout, stderr = p.communicate()
+            # FIXME: remove following 2 lines:
+            with open(self.directory + "/stdout.txt", "w") as f:
+                f.write(stdout)
             job_id_match = re.match("[0-9]+\[\]", stdout)
             if job_id_match is None:
                 raise OSError("Unable to implement callback for job id {}".format(stdout))

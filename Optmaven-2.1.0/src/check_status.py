@@ -11,7 +11,7 @@ console.disp("{:<39} {:<39}".format("EXPERIMENT", "STATUS"))
 console.disp("-" * 80)
 for experiment in os.listdir(standards.ExperimentsDirectory):
     if len(sys.argv) > 1:
-        if not experiment.startswith(tuple(sys.argv[1:])):
+        if not any([x in experiment for x in sys.argv[1:]]):
             continue
     directory = os.path.join(standards.ExperimentsDirectory, experiment)
     errors = os.path.join(directory, "errors.txt")
